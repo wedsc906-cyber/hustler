@@ -112,6 +112,12 @@ th, td {
 .popout table {
   font-size: 18px;
 }
+
+/* ✅ ADDITION: hide House & Payout in pop-out only */
+.popout #houseCut,
+.popout #payoutPool {
+  display: none;
+}
 </style>
 </head>
 
@@ -140,7 +146,8 @@ th, td {
 
 <div class="card">
   <div style="display:flex;justify-content:space-between">
-    <h3>Overview</h3>
+    <!-- ✅ ADDITION: id for pop-out update -->
+    <h3 id="overviewTitle">Overview</h3>
     <div class="hide-in-popout">
       <button class="btn-secondary" onclick="openPopout()">📺 Pop-out</button>
       <button class="btn-danger" onclick="resetWithPassword()">Reset</button>
@@ -251,10 +258,7 @@ function placeBet(){
   state.contestants[c].total += amt;
   state.totalPot += amt;
 
-  state.contestants[c].bets.push({
-    name: bettor,
-    amount: amt
-  });
+  state.contestants[c].bets.push({ name: bettor, amount: amt });
 
   bettorName.value="";
   betAmount.value="";
@@ -345,21 +349,23 @@ function render(){
   firstPrize.textContent=fmt(prize*0.5);
   secondPrize.textContent=fmt(prize*0.3);
   thirdPrize.textContent=fmt(prize*0.2);
+
+  /* ✅ ADDITION: pop-out only title update */
+  if (isPopout) {
+    overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
+  }
 }
 
 /* ================= ENTER KEY SHORTCUTS ================= */
 contestantName.addEventListener("keydown", e => {
   if (e.key === "Enter") addContestant();
 });
-
 contestantBuyIn.addEventListener("keydown", e => {
   if (e.key === "Enter") addContestant();
 });
-
 bettorName.addEventListener("keydown", e => {
   if (e.key === "Enter") placeBet();
 });
-
 betAmount.addEventListener("keydown", e => {
   if (e.key === "Enter") placeBet();
 });
