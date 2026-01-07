@@ -4,61 +4,108 @@
 <meta charset="UTF-8">
 <title>Live Betting Pool</title>
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
+* { pointer-events: auto; }
+
 :root {
   --bg:#0f172a; --panel:#020617; --border:#334155;
   --text:#e5e7eb; --muted:#94a3b8; --primary:#2563eb; --danger:#dc2626;
 }
-body { font-family:Inter,Arial; background:var(--bg); color:var(--text); padding:20px }
-.card { background:var(--panel); padding:16px; border-radius:12px; margin-top:18px }
-.controls { display:flex; gap:8px; flex-wrap:wrap }
-input,select { background:#020617; border:1px solid var(--border); color:var(--text); padding:8px; border-radius:8px }
-button { padding:8px 14px; border-radius:999px; border:none; font-weight:600; cursor:pointer }
-.btn-primary { background:#2563eb; color:white }
-.btn-secondary { background:#020617; border:1px solid var(--border); color:white }
-.btn-danger { background:var(--danger); color:white }
-table { width:100%; border-collapse:collapse; margin-top:10px }
-th,td { padding:10px; border-bottom:1px solid var(--border); text-align:center }
-.place-btn { background:#020617; border:1px solid var(--border); color:white; border-radius:8px }
-.place-btn.active { background:var(--primary) }
-.total { margin-top:6px; color:var(--muted) }
-.hidden { display:none }
+
+body {
+  font-family: Inter, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 20px;
+}
+
+.card {
+  background: var(--panel);
+  padding: 16px;
+  border-radius: 12px;
+  margin-top: 18px;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+input, select, button {
+  background: #020617;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px;
+  border-radius: 8px;
+  position: relative;
+  z-index: 10;
+}
+
+button { font-weight: 600; cursor: pointer; }
+
+.btn-primary { background: #2563eb; color: white; }
+.btn-secondary { background: #020617; border:1px solid var(--border); color:white; }
+.btn-danger { background: var(--danger); color:white; }
+
+table {
+  width:100%;
+  border-collapse: collapse;
+  margin-top:10px;
+}
+
+th, td {
+  padding:10px;
+  border-bottom:1px solid var(--border);
+  text-align:center;
+}
+
+.place-btn {
+  background:#020617;
+  border:1px solid var(--border);
+  color:white;
+  border-radius:8px;
+}
+
+.place-btn.active { background: var(--primary); }
+
+.total { margin-top:6px; color:var(--muted); }
 </style>
 </head>
 
 <body>
 
-<h1 id="title">Live Betting Pool</h1>
+<h1>Live Betting Pool</h1>
 
-<div id="adminUI">
-
-  <div class="card">
-    <h3>Add Contestant</h3>
-    <div class="controls">
-      <input id="contestantName" placeholder="Contestant name">
-      <input id="contestantBuyIn" placeholder="Buy-in (1k)">
-      <button class="btn-primary" onclick="addContestant()">Add</button>
-    </div>
+<div class="card">
+  <h3>Add Contestant</h3>
+  <div class="controls">
+    <input id="contestantName" placeholder="Contestant name">
+    <input id="contestantBuyIn" placeholder="Buy-in (1k)">
+    <button class="btn-primary" onclick="addContestant()">Add</button>
   </div>
+</div>
 
-  <div class="card">
-    <h3>Place Bet</h3>
-    <div class="controls">
-      <input id="bettorName" placeholder="Bettor name">
-      <select id="contestantSelect"></select>
-      <input id="betAmount" placeholder="Amount (1k)">
-      <button class="btn-primary" onclick="placeBet()">Bet</button>
-    </div>
+<div class="card">
+  <h3>Place Bet</h3>
+  <div class="controls">
+    <input id="bettorName" placeholder="Bettor name">
+    <select id="contestantSelect"></select>
+    <input id="betAmount" placeholder="Amount (1k)">
+    <button class="btn-primary" onclick="placeBet()">Bet</button>
   </div>
-
 </div>
 
 <div class="card">
   <div style="display:flex;justify-content:space-between">
     <h3>Overview</h3>
-    <div id="adminButtons">
+    <div>
       <button class="btn-secondary" onclick="openPopout()">📺 Pop-out</button>
       <button class="btn-danger" onclick="resetWithPassword()">Reset</button>
     </div>
@@ -66,61 +113,96 @@ th,td { padding:10px; border-bottom:1px solid var(--border); text-align:center }
 
   <table>
     <thead>
-      <tr id="tableHead"></tr>
+      <tr><th>Contestant</th><th>Total</th><th>Mult</th><th>Buy-In</th><th>Place</th></tr>
     </thead>
     <tbody id="contestantTable"></tbody>
   </table>
 
-  <div id="totals">
-    <div class="total">Pot: <span id="totalPot">$0</span></div>
-    <div class="total">House: <span id="houseCut">$0</span></div>
-    <div class="total">Payout: <span id="payoutPool">$0</span></div>
-  </div>
+  <div class="total">Pot: <span id="totalPot">$0</span></div>
+  <div class="total">House: <span id="houseCut">$0</span></div>
+  <div class="total">Payout: <span id="payoutPool">$0</span></div>
+</div>
+
+<div class="card">
+  <h3>Buy-In Prize Pool</h3>
+  <div>Total Buy-Ins: <span id="buyInTotal">$0</span></div>
+  <div>Prize Pool: <span id="buyInPrize">$0</span></div>
+  <hr>
+  <div>🥇 <span id="firstName">—</span>: <span id="firstPrize">$0</span></div>
+  <div>🥈 <span id="secondName">—</span>: <span id="secondPrize">$0</span></div>
+  <div>🥉 <span id="thirdName">—</span>: <span id="thirdPrize">$0</span></div>
 </div>
 
 <script>
-/* ===== MODE ===== */
-const IS_POPOUT = new URLSearchParams(location.search).has("popout");
-
 /* ===== SUPABASE ===== */
 const SUPABASE_URL = "https://ctirstrnatawigarrncc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_GdaFQ6Vn9HT-U9tg7iX8yw_810IiIXK";
-const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ===== CONFIG ===== */
 const ADMIN_PASSWORD = "reset123";
 const BET_HOUSE = 0.15;
+const BUYIN_HOUSE = 0.10;
 
 /* ===== STATE ===== */
-let state = { contestants:{}, totalPot:0 };
+let state = {
+  contestants: {},
+  totalPot: 0,
+  placements: { first:null, second:null, third:null }
+};
 
 /* ===== HELPERS ===== */
-const parseAmount = v => v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
+const parseAmount = v =>
+  v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
 const fmt = v => `$${(v||0).toLocaleString()}`;
 
 /* ===== DATABASE ===== */
 async function saveState(){
-  await supabase.from("state").update({ data: state }).eq("id",1);
-}
+  await supabaseClient
+    .from("state")
+    .upsert({ id: 1, data: state }, { onConflict: "id" });
 
-async function loadState(){
-  const { data } = await supabase.from("state").select("data").eq("id",1).single();
-  if(data?.data) state = data.data;
+  // 🔴 CRITICAL FIX: render immediately
   render();
 }
 
-supabase.channel("state")
-  .on("postgres_changes",{event:"UPDATE",table:"state"},p=>{
-    state = p.new.data;
-    render();
-  }).subscribe();
+async function loadState(){
+  const { data } = await supabaseClient
+    .from("state")
+    .select("data")
+    .eq("id",1)
+    .single();
+
+  if (data?.data) state = data.data;
+  render();
+}
+
+/* ===== REALTIME (INSERT + UPDATE) ===== */
+supabaseClient
+  .channel("state-updates")
+  .on(
+    "postgres_changes",
+    { event:"*", schema:"public", table:"state" },
+    payload => {
+      state = payload.new.data;
+      render();
+    }
+  )
+  .subscribe();
 
 /* ===== ACTIONS ===== */
 function addContestant(){
   const n = contestantName.value.trim();
   if(!n || state.contestants[n]) return;
-  state.contestants[n] = { total:0 };
-  contestantName.value=""; contestantBuyIn.value="";
+
+  state.contestants[n] = {
+    total: 0,
+    bets: [],
+    buyIn: parseAmount(contestantBuyIn.value) || 0
+  };
+
+  contestantName.value="";
+  contestantBuyIn.value="";
   saveState();
 }
 
@@ -128,67 +210,81 @@ function placeBet(){
   const c = contestantSelect.value;
   const amt = parseAmount(betAmount.value);
   if(!c || !amt) return;
+
   state.contestants[c].total += amt;
+  state.contestants[c].bets.push({
+    bettor: bettorName.value,
+    amount: amt
+  });
+
   state.totalPot += amt;
-  bettorName.value=""; betAmount.value="";
+  bettorName.value="";
+  betAmount.value="";
+  saveState();
+}
+
+function setPlacement(p,n){
+  Object.keys(state.placements).forEach(k=>{
+    if(state.placements[k]===n) state.placements[k]=null;
+  });
+  state.placements[p]=n;
   saveState();
 }
 
 function resetWithPassword(){
-  if(prompt("Admin password") !== ADMIN_PASSWORD) return;
-  state = { contestants:{}, totalPot:0 };
+  if(prompt("Admin password")!==ADMIN_PASSWORD) return;
+  state={contestants:{},totalPot:0,placements:{first:null,second:null,third:null}};
   saveState();
 }
 
 function openPopout(){
-  window.open(location.pathname + "?popout=1","pop","width=700,height=500");
+  window.open(location.href,"pop","width=900,height=600");
 }
 
 /* ===== RENDER ===== */
 function render(){
-  contestantTable.innerHTML = "";
+  contestantSelect.innerHTML =
+    Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
 
-  if(!IS_POPOUT){
-    contestantSelect.innerHTML =
-      Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
-  }
-
-  const payout = state.totalPot * (1-BET_HOUSE);
+  contestantTable.innerHTML="";
+  const payout = state.totalPot*(1-BET_HOUSE);
+  let buyTotal=0;
 
   for(const [n,c] of Object.entries(state.contestants)){
-    const mult = c.total ? payout / c.total : 0;
-    contestantTable.innerHTML += `
+    buyTotal+=c.buyIn;
+    const mult=c.total?payout/c.total:0;
+
+    contestantTable.innerHTML+=`
       <tr>
         <td>${n}</td>
         <td>${fmt(c.total)}</td>
-        <td>${mult ? mult.toFixed(2)+"x" : "—"}</td>
+        <td>${mult?mult.toFixed(2)+'x':'—'}</td>
+        <td>${fmt(c.buyIn)}</td>
+        <td>
+          <button class="place-btn ${state.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
+          <button class="place-btn ${state.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
+          <button class="place-btn ${state.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
+        </td>
       </tr>`;
   }
 
-  if(!IS_POPOUT){
-    totalPot.textContent = fmt(state.totalPot);
-    houseCut.textContent = fmt(state.totalPot * BET_HOUSE);
-    payoutPool.textContent = fmt(payout);
-  }
+  totalPot.textContent=fmt(state.totalPot);
+  houseCut.textContent=fmt(state.totalPot*BET_HOUSE);
+  payoutPool.textContent=fmt(payout);
+
+  const prize=buyTotal*(1-BUYIN_HOUSE);
+  buyInTotal.textContent=fmt(buyTotal);
+  buyInPrize.textContent=fmt(prize);
+
+  firstName.textContent=state.placements.first||"—";
+  secondName.textContent=state.placements.second||"—";
+  thirdName.textContent=state.placements.third||"—";
+  firstPrize.textContent=fmt(prize*0.5);
+  secondPrize.textContent=fmt(prize*0.3);
+  thirdPrize.textContent=fmt(prize*0.2);
 }
 
 /* ===== INIT ===== */
-if(IS_POPOUT){
-  title.textContent = "Live Betting – Display";
-  adminUI.classList.add("hidden");
-  adminButtons.classList.add("hidden");
-  totals.classList.add("hidden");
-  tableHead.innerHTML = "<th>Contestant</th><th>Total</th><th>Mult</th>";
-}else{
-  tableHead.innerHTML = "<th>Contestant</th><th>Total</th><th>Mult</th>";
-}
-
-/* ENTER KEY SUPPORT */
-contestantName.onkeydown = e => e.key==="Enter" && addContestant();
-contestantBuyIn.onkeydown = e => e.key==="Enter" && addContestant();
-bettorName.onkeydown = e => e.key==="Enter" && placeBet();
-betAmount.onkeydown = e => e.key==="Enter" && placeBet();
-
 loadState();
 </script>
 
