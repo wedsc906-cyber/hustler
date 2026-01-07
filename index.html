@@ -156,14 +156,14 @@ const parseAmount = v =>
   v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
 const fmt = v => `$${(v||0).toLocaleString()}`;
 
-/* ===== DATABASE (OPTION B FIX) ===== */
+/* ===== DATABASE ===== */
 async function saveState(){
   await supabaseClient
     .from("state")
-    .upsert(
-      { id: 1, data: state },
-      { onConflict: "id" }
-    );
+    .upsert({ id: 1, data: state }, { onConflict: "id" });
+
+  // 🔴 CRITICAL FIX: render immediately
+  render();
 }
 
 async function loadState(){
@@ -177,12 +177,12 @@ async function loadState(){
   render();
 }
 
-/* ===== REALTIME ===== */
+/* ===== REALTIME (INSERT + UPDATE) ===== */
 supabaseClient
   .channel("state-updates")
   .on(
     "postgres_changes",
-    { event:"UPDATE", schema:"public", table:"state" },
+    { event:"*", schema:"public", table:"state" },
     payload => {
       state = payload.new.data;
       render();
