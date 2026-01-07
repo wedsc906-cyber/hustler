@@ -113,9 +113,8 @@ th, td {
   font-size: 18px;
 }
 
-/* ✅ ADDITION: hide House & Payout in pop-out only */
-.popout #houseCut,
-.popout #payoutPool {
+/* ✅ REMOVE red-boxed section in pop-out only */
+.popout .card .total {
   display: none;
 }
 </style>
@@ -146,7 +145,6 @@ th, td {
 
 <div class="card">
   <div style="display:flex;justify-content:space-between">
-    <!-- ✅ ADDITION: id for pop-out update -->
     <h3 id="overviewTitle">Overview</h3>
     <div class="hide-in-popout">
       <button class="btn-secondary" onclick="openPopout()">📺 Pop-out</button>
@@ -350,7 +348,6 @@ function render(){
   secondPrize.textContent=fmt(prize*0.3);
   thirdPrize.textContent=fmt(prize*0.2);
 
-  /* ✅ ADDITION: pop-out only title update */
   if (isPopout) {
     overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
   }
