@@ -98,7 +98,7 @@ th, td {
   <h3>Add Contestant</h3>
   <div class="controls">
     <input id="contestantName" placeholder="Contestant name (Enter to add)">
-    <input id="contestantBuyIn" placeholder="Buy-in (1k) (Enter to add)">
+    <input id="contestantBuyIn" placeholder="Buy-in (1k, 1m)">
     <button class="btn-primary" onclick="addContestant()">Add</button>
   </div>
 </div>
@@ -108,7 +108,7 @@ th, td {
   <div class="controls">
     <input id="bettorName" placeholder="Bettor name (Enter to bet)">
     <select id="contestantSelect"></select>
-    <input id="betAmount" placeholder="Amount (1k) (Enter to bet)">
+    <input id="betAmount" placeholder="Amount (1k, 1m)">
     <button class="btn-primary" onclick="placeBet()">Bet</button>
   </div>
 </div>
@@ -173,8 +173,16 @@ let state = {
 };
 
 /* ================= HELPERS ================= */
-const parseAmount = v =>
-  v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
+const parseAmount = v => {
+  if (!v) return 0;
+  const val = v.toLowerCase().trim();
+
+  if (val.endsWith("m")) return parseFloat(val) * 1_000_000;
+  if (val.endsWith("k")) return parseFloat(val) * 1_000;
+
+  return parseFloat(val);
+};
+
 const fmt = v => `$${(v||0).toLocaleString()}`;
 
 /* ================= DATABASE ================= */
@@ -202,7 +210,9 @@ function addContestant(){
   const n = contestantName.value.trim();
   if(!n || state.contestants[n]) return;
   state.contestants[n] = {
-    total:0, bets:[], buyIn:parseAmount(contestantBuyIn.value)||0
+    total:0,
+    bets:[],
+    buyIn: parseAmount(contestantBuyIn.value) || 0
   };
   contestantName.value="";
   contestantBuyIn.value="";
@@ -238,24 +248,15 @@ function openPopout(){
 }
 
 /* ================= ENTER KEY SUPPORT ================= */
-
-// Add contestant on Enter
-["contestantName", "contestantBuyIn"].forEach(id => {
-  document.getElementById(id).addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      addContestant();
-    }
+["contestantName","contestantBuyIn"].forEach(id=>{
+  document.getElementById(id).addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.preventDefault(); addContestant(); }
   });
 });
 
-// Place bet on Enter
-["bettorName", "betAmount"].forEach(id => {
-  document.getElementById(id).addEventListener("keydown", e => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      placeBet();
-    }
+["bettorName","betAmount"].forEach(id=>{
+  document.getElementById(id).addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.preventDefault(); placeBet(); }
   });
 });
 
