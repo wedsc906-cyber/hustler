@@ -61,14 +61,6 @@ th, td {
   text-align:center;
 }
 
-.place-btn {
-  background:#020617;
-  border:1px solid var(--border);
-  color:white;
-  border-radius:8px;
-}
-.place-btn.active { background:#2563eb; }
-
 .total { margin-top:6px; color:#94a3b8; }
 
 /* ===== POPOUT MODE ===== */
@@ -77,7 +69,8 @@ th, td {
 .popout #buyInCard,
 .popout #adminControls,
 .popout .buyin-col,
-.popout .place-col {
+.popout .house-line,
+.popout .payout-line {
   display: none !important;
 }
 
@@ -124,7 +117,7 @@ th, td {
   <div style="display:flex;justify-content:space-between">
     <div class="overview-title">
       <h3>Overview</h3>
-      <div class="overview-pot" id="overviewPot">$0</div>
+      <div class="overview-pot" id="overviewPot">Total Pot $0</div>
     </div>
     <div id="adminControls">
       <button class="btn-secondary" onclick="openPopout()">📺 Pop-out</button>
@@ -139,14 +132,15 @@ th, td {
         <th>Total</th>
         <th>Mult</th>
         <th class="buyin-col">Buy-In</th>
-        <th class="place-col">Place</th>
       </tr>
     </thead>
     <tbody id="contestantTable"></tbody>
   </table>
 
-  <div class="total">House: <span id="houseCut">$0</span></div>
-  <div class="total">Payout: <span id="payoutPool">$0</span></div>
+  <!-- NORMAL PAGE TOTALS -->
+  <div class="total">Total Pot: <span id="totalPotBottom">$0</span></div>
+  <div class="total house-line">House: <span id="houseCut">$0</span></div>
+  <div class="total payout-line">Payout: <span id="payoutPool">$0</span></div>
 </div>
 
 <div class="card" id="buyInCard">
@@ -161,20 +155,14 @@ const isPopout = new URLSearchParams(location.search).has("popout");
 if (isPopout) document.documentElement.classList.add("popout");
 
 /* ===== AUTOSCROLL (POPOUT ONLY) ===== */
-let autoScrollTimer = null;
-
 function startAutoScroll() {
   if (!isPopout) return;
-
-  const SPEED = 0.35; // px per tick
-  autoScrollTimer = setInterval(() => {
-    const max =
-      document.documentElement.scrollHeight - window.innerHeight;
-
+  setInterval(() => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
     if (window.scrollY >= max - 2) {
       window.scrollTo({ top: 0, behavior: "instant" });
     } else {
-      window.scrollBy(0, SPEED);
+      window.scrollBy(0, 0.35);
     }
   }, 16);
 }
@@ -185,35 +173,26 @@ const SUPABASE_KEY = "sb_publishable_GdaFQ6Vn9HT-U9tg7iX8yw_810IiIXK";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ===== CONFIG ===== */
-const ADMIN_PASSWORD = "reset123";
 const BET_HOUSE = 0.15;
 const BUYIN_HOUSE = 0.10;
 
 /* ===== STATE ===== */
-let state = {
-  contestants: {},
-  totalPot: 0
-};
+let state = { contestants:{}, totalPot:0 };
 
 /* ===== HELPERS ===== */
-const parseAmount = v =>
-  v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
+const parseAmount = v => v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
 const fmt = v => `$${(v||0).toLocaleString()}`;
 
 /* ===== DATABASE ===== */
 async function saveState(){
-  await supabaseClient
-    .from("state")
+  await supabaseClient.from("state")
     .upsert({ id:1, data:state }, { onConflict:"id" });
   render();
 }
 
 async function loadState(){
   const { data } = await supabaseClient
-    .from("state")
-    .select("data")
-    .eq("id",1)
-    .single();
+    .from("state").select("data").eq("id",1).single();
   if (data?.data) state = data.data;
   render();
 }
@@ -228,11 +207,8 @@ supabaseClient.channel("state")
 function addContestant(){
   const n = contestantName.value.trim();
   if(!n || state.contestants[n]) return;
-
   state.contestants[n] = { total:0, buyIn:parseAmount(contestantBuyIn.value)||0 };
-  contestantName.value="";
-  contestantBuyIn.value="";
-  contestantName.focus();
+  contestantName.value=""; contestantBuyIn.value="";
   saveState();
 }
 
@@ -240,17 +216,14 @@ function placeBet(){
   const c = contestantSelect.value;
   const amt = parseAmount(betAmount.value);
   if(!c || !amt) return;
-
   state.contestants[c].total += amt;
   state.totalPot += amt;
-  bettorName.value="";
-  betAmount.value="";
-  bettorName.focus();
+  bettorName.value=""; betAmount.value="";
   saveState();
 }
 
 function resetWithPassword(){
-  if(prompt("Admin password")!==ADMIN_PASSWORD) return;
+  if(prompt("Admin password")!=="reset123") return;
   state={contestants:{},totalPot:0};
   saveState();
 }
@@ -271,30 +244,28 @@ function render(){
   for(const [n,c] of Object.entries(state.contestants)){
     buyTotal+=c.buyIn;
     const mult=c.total?payout/c.total:0;
-
     contestantTable.innerHTML+=`
       <tr>
         <td>${n}</td>
         <td>${fmt(c.total)}</td>
         <td>${mult?mult.toFixed(2)+'x':'—'}</td>
         <td class="buyin-col">${fmt(c.buyIn)}</td>
-        <td class="place-col">—</td>
       </tr>`;
   }
 
-  overviewPot.textContent = fmt(state.totalPot);
+  overviewPot.textContent = `Total Pot ${fmt(state.totalPot)}`;
+  totalPotBottom.textContent = fmt(state.totalPot);
   houseCut.textContent = fmt(state.totalPot*BET_HOUSE);
   payoutPool.textContent = fmt(payout);
-
   buyInTotal.textContent = fmt(buyTotal);
   buyInPrize.textContent = fmt(buyTotal*(1-BUYIN_HOUSE));
 }
 
 /* ===== ENTER KEY SUPPORT ===== */
-contestantName.addEventListener("keydown", e => e.key==="Enter" && addContestant());
-contestantBuyIn.addEventListener("keydown", e => e.key==="Enter" && addContestant());
-bettorName.addEventListener("keydown", e => e.key==="Enter" && placeBet());
-betAmount.addEventListener("keydown", e => e.key==="Enter" && placeBet());
+contestantName.onkeydown = e=>e.key==="Enter"&&addContestant();
+contestantBuyIn.onkeydown = e=>e.key==="Enter"&&addContestant();
+bettorName.onkeydown = e=>e.key==="Enter"&&placeBet();
+betAmount.onkeydown = e=>e.key==="Enter"&&placeBet();
 
 /* ===== INIT ===== */
 loadState();
