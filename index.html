@@ -126,6 +126,11 @@ th, td {
 .popout .card .total {
   display: none;
 }
+
+/* ✅ ADDITION: allow safe scaling in pop-out */
+.popout .card {
+  transform-origin: top center;
+}
 </style>
 </head>
 
@@ -265,7 +270,6 @@ function placeBet(){
   saveState();
 }
 
-/* ✅ NEW: remove a single bettor */
 function removeBet(contestant, index){
   const bet = state.contestants[contestant].bets[index];
   if(!bet) return;
@@ -300,6 +304,23 @@ function toggleRow(id, btn){
   const open = row.style.display === "table-row";
   row.style.display = open ? "none" : "table-row";
   btn.classList.toggle("open", !open);
+}
+
+/* ✅ ADDITION: auto-scale pop-out so all contestants fit */
+function scalePopoutToFit(){
+  if(!isPopout) return;
+
+  const card = document.querySelector(".card");
+  if(!card) return;
+
+  card.style.transform = "scale(1)";
+
+  const available = window.innerHeight - 20;
+  const height = card.scrollHeight;
+
+  if(height > available){
+    card.style.transform = `scale(${available / height})`;
+  }
 }
 
 /* ================= RENDER ================= */
@@ -357,6 +378,9 @@ function render(){
   thirdPrize.textContent=fmt(prize*0.2);
 
   if (isPopout) overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
+
+  /* ✅ ADDITION: scale after render */
+  scalePopoutToFit();
 }
 
 /* ================= ENTER KEY SHORTCUTS ================= */
