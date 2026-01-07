@@ -97,8 +97,8 @@ th, td {
 <div class="card hide-in-popout">
   <h3>Add Contestant</h3>
   <div class="controls">
-    <input id="contestantName" placeholder="Contestant name">
-    <input id="contestantBuyIn" placeholder="Buy-in (1k)">
+    <input id="contestantName" placeholder="Contestant name (Enter to add)">
+    <input id="contestantBuyIn" placeholder="Buy-in (1k) (Enter to add)">
     <button class="btn-primary" onclick="addContestant()">Add</button>
   </div>
 </div>
@@ -106,9 +106,9 @@ th, td {
 <div class="card hide-in-popout">
   <h3>Place Bet</h3>
   <div class="controls">
-    <input id="bettorName" placeholder="Bettor name">
+    <input id="bettorName" placeholder="Bettor name (Enter to bet)">
     <select id="contestantSelect"></select>
-    <input id="betAmount" placeholder="Amount (1k)">
+    <input id="betAmount" placeholder="Amount (1k) (Enter to bet)">
     <button class="btn-primary" onclick="placeBet()">Bet</button>
   </div>
 </div>
@@ -204,7 +204,8 @@ function addContestant(){
   state.contestants[n] = {
     total:0, bets:[], buyIn:parseAmount(contestantBuyIn.value)||0
   };
-  contestantName.value=""; contestantBuyIn.value="";
+  contestantName.value="";
+  contestantBuyIn.value="";
   saveState();
 }
 
@@ -214,6 +215,7 @@ function placeBet(){
   if(!c || !amt) return;
   state.contestants[c].total += amt;
   state.totalPot += amt;
+  betAmount.value="";
   saveState();
 }
 
@@ -234,6 +236,28 @@ function resetWithPassword(){
 function openPopout(){
   window.open(location.pathname+"?popout=1","pop","width=900,height=600");
 }
+
+/* ================= ENTER KEY SUPPORT ================= */
+
+// Add contestant on Enter
+["contestantName", "contestantBuyIn"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addContestant();
+    }
+  });
+});
+
+// Place bet on Enter
+["bettorName", "betAmount"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      placeBet();
+    }
+  });
+});
 
 /* ================= RENDER ================= */
 function render(){
@@ -284,4 +308,3 @@ loadState();
 
 </body>
 </html>
-
