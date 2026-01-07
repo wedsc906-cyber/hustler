@@ -225,6 +225,7 @@ const parseAmount = v => {
 };
 
 const fmt = v => `$${(v||0).toLocaleString()}`;
+const fmtPayout = v => `$${Math.floor(v||0).toLocaleString()}`;
 
 /* ================= DATABASE ================= */
 async function saveState(){
@@ -340,12 +341,16 @@ function render(){
     const rowId="details_"+n.replace(/\W/g,"");
 
     const betsHtml = c.bets.length
-      ? c.bets.map((b,i)=>`
+      ? c.bets.map((b,i)=>{
+          const payout = b.amount * mult;
+          return `
           <div>
             👤 ${b.name} — ${fmt(b.amount)}
+            <span style="color: #22c55e; font-weight: 600;">→ ${fmtPayout(payout)}</span>
             <button class="remove-bet" onclick="removeBet('${n}',${i})">🗑</button>
           </div>
-        `).join("")
+        `;
+        }).join("")
       : "<div>No bets</div>";
 
     contestantTable.innerHTML+=`
