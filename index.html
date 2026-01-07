@@ -62,6 +62,14 @@ th, td {
   text-align:center;
 }
 
+tr.clickable { cursor:pointer; }
+tr.details td {
+  text-align:left;
+  font-size:0.85rem;
+  line-height:1.5;
+  color:#cbd5f5;
+}
+
 .total { margin-top:6px; color:var(--muted); }
 
 .popout-hide { display:none !important; }
@@ -115,7 +123,7 @@ th, td {
   <div class="total" id="totalsBlock">
     Total Pot: <span id="totalPot">$0</span><br>
     House: <span id="houseCut">$0</span><br>
-    Payout: <span id="payoutPool">$0</span>
+    Payout Pool: <span id="payoutPool">$0</span>
   </div>
 </div>
 
@@ -139,7 +147,11 @@ const ADMIN_PASSWORD = "reset123";
 const BET_HOUSE = 0.15;
 
 /* ================= STATE ================= */
-let state = { contestants:{}, totalPot:0 };
+let state = {
+  contestants: {},
+  totalPot: 0
+};
+let expandedContestant = null;
 
 /* ================= HELPERS ================= */
 function parseAmount(v){
@@ -170,38 +182,39 @@ function addContestant(){
   const n=contestantName.value.trim();
   const buy=parseAmount(contestantBuyIn.value)||0;
   if(!n||state.contestants[n]) return;
-  state.contestants[n]={total:0,buyIn:buy};
+  state.contestants[n]={total:0,bets:[],buyIn:buy};
   contestantName.value=""; contestantBuyIn.value="";
   contestantName.focus();
   saveState();
 }
+
 function placeBet(){
   const c=contestantSelect.value;
   const amt=parseAmount(betAmount.value);
-  if(!c||!amt||amt<=0) return;
+  const bettor=bettorName.value.trim();
+  if(!c||!amt||!bettor) return;
   state.contestants[c].total+=amt;
+  state.contestants[c].bets.push({bettor,amount:amt});
   state.totalPot+=amt;
   bettorName.value=""; betAmount.value="";
   bettorName.focus();
   saveState();
 }
+
+function toggleDetails(name){
+  expandedContestant = expandedContestant===name ? null : name;
+  render();
+}
+
 function resetWithPassword(){
   if(prompt("Admin password")!==ADMIN_PASSWORD) return;
   state={contestants:{},totalPot:0};
+  expandedContestant=null;
   saveState();
 }
+
 function openPopout(){
   window.open(location.pathname+"?popout=1","pop","width=900,height=600");
-}
-
-/* ================= AUTO SCROLL ================= */
-let dir=1;
-function startAutoScroll(){
-  setInterval(()=>{
-    window.scrollBy(0,0.35*dir);
-    if(window.innerHeight+window.scrollY>=document.body.offsetHeight-2) dir=-1;
-    if(window.scrollY<=0) dir=1;
-  },16);
 }
 
 /* ================= RENDER ================= */
@@ -210,24 +223,42 @@ function render(){
     .map(n=>`<option>${n}</option>`).join("");
 
   contestantTable.innerHTML="";
-  const payout=state.totalPot*(1-BET_HOUSE);
-  let buyTotal=0;
+  const payoutPool=state.totalPot*(1-BET_HOUSE);
 
   for(const [n,c] of Object.entries(state.contestants)){
-    buyTotal+=c.buyIn;
-    const mult=c.total?payout/c.total:0;
+    const mult=c.total?payoutPool/c.total:0;
+
     contestantTable.innerHTML+=`
-      <tr>
+      <tr class="clickable" onclick="toggleDetails('${n}')">
         <td>${n}</td>
         <td>${fmt(c.total)}</td>
         <td>${mult?mult.toFixed(2)+'x':'—'}</td>
         <td class="buyin-col">${fmt(c.buyIn)}</td>
       </tr>`;
+
+    if(expandedContestant===n && !IS_POPOUT){
+      contestantTable.innerHTML+=`
+        <tr class="details">
+          <td colspan="4">
+            ${
+              c.bets.length
+                ? c.bets.map(b=>{
+                    const payout=b.amount*mult;
+                    return `${b.bettor}: ${fmt(b.amount)} → <strong>${fmt(payout)}</strong>`;
+                  }).join("<br>")
+                : "No bets placed"
+            }
+          </td>
+        </tr>`;
+    }
   }
 
   totalPot.textContent=fmt(state.totalPot);
   houseCut.textContent=fmt(state.totalPot*BET_HOUSE);
-  payoutPool.textContent=fmt(payout);
+  payoutPool.textContent=fmt(payoutPool);
+
+  let buyTotal=0;
+  Object.values(state.contestants).forEach(c=>buyTotal+=c.buyIn);
   buyInTotal.textContent=fmt(buyTotal);
   buyInPrize.textContent=fmt(buyTotal);
 
@@ -245,7 +276,6 @@ function render(){
 
 /* ================= INIT ================= */
 loadState();
-if(IS_POPOUT) startAutoScroll();
 
 /* ================= ENTER SUPPORT ================= */
 contestantName.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();addContestant();}});
