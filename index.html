@@ -15,27 +15,23 @@
   --bg:#0f172a; --panel:#020617; --border:#334155;
   --text:#e5e7eb; --muted:#94a3b8; --primary:#2563eb; --danger:#dc2626;
 }
-
 body {
   font-family: Inter, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   padding: 20px;
 }
-
 .card {
   background: var(--panel);
   padding: 16px;
   border-radius: 12px;
   margin-top: 18px;
 }
-
 .controls {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
-
 input, select, button {
   background: #020617;
   border: 1px solid var(--border);
@@ -43,36 +39,28 @@ input, select, button {
   padding: 8px;
   border-radius: 8px;
 }
-
 button { font-weight: 600; cursor: pointer; }
-
 .btn-primary { background: #2563eb; color: white; }
 .btn-secondary { background: #020617; border:1px solid var(--border); color:white; }
 .btn-danger { background: var(--danger); color:white; }
-
 table {
   width:100%;
   border-collapse: collapse;
   margin-top:10px;
 }
-
 th, td {
   padding:10px;
   border-bottom:1px solid var(--border);
   text-align:center;
 }
-
 .place-btn {
   background:#020617;
   border:1px solid var(--border);
   color:white;
   border-radius:8px;
 }
-
 .place-btn.active { background: var(--primary); }
-
 .total { margin-top:6px; color:var(--muted); }
-
 .popout-hide { display:none !important; }
 </style>
 </head>
@@ -160,6 +148,9 @@ let state = {
   placements: { first:null, second:null, third:null }
 };
 
+/* ===== INTERNAL RENDER CACHE (FOCUS FIX) ===== */
+let lastContestantKeys = "";
+
 /* ===== HELPERS ===== */
 const parseAmount = v =>
   v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
@@ -168,11 +159,11 @@ const fmt = v => `$${(v||0).toLocaleString()}`;
 /* ===== DATABASE ===== */
 async function saveState(){
   await supabaseClient.from("state").upsert({ id:1, data:state });
-  render();
 }
 
 async function loadState(){
-  const { data } = await supabaseClient.from("state").select("data").eq("id",1).single();
+  const { data } = await supabaseClient.from("state")
+    .select("data").eq("id",1).single();
   if(data?.data) state = data.data;
   render();
 }
@@ -187,34 +178,30 @@ supabaseClient
 /* ===== ACTIONS ===== */
 function addContestant(){
   const name = contestantName.value.trim();
-  const buyIn = parseAmount(contestantBuyIn.value) || 0;
   if(!name) return;
 
   const id = crypto.randomUUID();
-
   state.contestants[id] = {
     id,
     name,
     total: 0,
     bets: [],
-    buyIn
+    buyIn: parseAmount(contestantBuyIn.value) || 0
   };
 
   contestantName.value = "";
   contestantBuyIn.value = "";
   contestantName.focus();
-
   saveState();
 }
 
 function placeBet(){
-  const contestantId = contestantSelect.value;
+  const id = contestantSelect.value;
   const bettor = bettorName.value.trim();
   const amt = parseAmount(betAmount.value);
+  if(!id || !bettor || !amt) return;
 
-  if(!contestantId || !bettor || !amt) return;
-
-  const c = state.contestants[contestantId];
+  const c = state.contestants[id];
   c.total += amt;
   c.bets.push({ bettor, amount: amt });
   state.totalPot += amt;
@@ -222,11 +209,10 @@ function placeBet(){
   bettorName.value = "";
   betAmount.value = "";
   bettorName.focus();
-
   saveState();
 }
 
-function setPlacement(place, id){
+function setPlacement(place,id){
   Object.keys(state.placements).forEach(k=>{
     if(state.placements[k] === id) state.placements[k] = null;
   });
@@ -237,17 +223,22 @@ function setPlacement(place, id){
 function resetWithPassword(){
   if(prompt("Admin password") !== ADMIN_PASSWORD) return;
   state = { contestants:{}, totalPot:0, placements:{first:null,second:null,third:null} };
+  lastContestantKeys = "";
   saveState();
 }
 
 function openPopout(){
-  window.open(location.pathname + "?popout=1", "pop", "width=900,height=600");
+  window.open(location.pathname+"?popout=1","pop","width=900,height=600");
 }
 
 /* ===== RENDER ===== */
 function render(){
-  contestantSelect.innerHTML = Object.values(state.contestants)
-    .map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  const keys = Object.keys(state.contestants).join(",");
+  if(keys !== lastContestantKeys){
+    contestantSelect.innerHTML = Object.values(state.contestants)
+      .map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+    lastContestantKeys = keys;
+  }
 
   contestantTable.innerHTML = "";
   const payout = state.totalPot * (1 - BET_HOUSE);
@@ -256,7 +247,6 @@ function render(){
   for(const c of Object.values(state.contestants)){
     buyTotal += c.buyIn;
     const mult = c.total ? payout / c.total : 0;
-
     contestantTable.innerHTML += `
       <tr>
         <td>${c.name}</td>
@@ -292,10 +282,8 @@ function render(){
     placeBetCard.classList.add("popout-hide");
     buyInCard.classList.add("popout-hide");
     totalsBlock.classList.add("popout-hide");
-
     document.querySelectorAll(".buyin-col,.place-col")
       .forEach(el=>el.classList.add("popout-hide"));
-
     overviewTitle.textContent = `Overview — Total Pot ${fmt(state.totalPot)}`;
   }
 }
