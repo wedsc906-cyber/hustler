@@ -96,6 +96,16 @@ th, td {
   color: #cbd5f5;
 }
 
+/* remove bettor button */
+.remove-bet {
+  margin-left: 8px;
+  background: transparent;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 14px;
+}
+
 /* ================= POP-OUT MODE ================= */
 
 .popout h1,
@@ -113,7 +123,6 @@ th, td {
   font-size: 18px;
 }
 
-/* ✅ REMOVE red-boxed section in pop-out only */
 .popout .card .total {
   display: none;
 }
@@ -237,13 +246,8 @@ supabaseClient.channel("state")
 function addContestant(){
   const n = contestantName.value.trim();
   if(!n || state.contestants[n]) return;
-  state.contestants[n] = {
-    total:0,
-    bets:[],
-    buyIn: parseAmount(contestantBuyIn.value) || 0
-  };
-  contestantName.value="";
-  contestantBuyIn.value="";
+  state.contestants[n] = { total:0, bets:[], buyIn: parseAmount(contestantBuyIn.value) || 0 };
+  contestantName.value=""; contestantBuyIn.value="";
   saveState();
 }
 
@@ -255,11 +259,20 @@ function placeBet(){
 
   state.contestants[c].total += amt;
   state.totalPot += amt;
-
   state.contestants[c].bets.push({ name: bettor, amount: amt });
 
-  bettorName.value="";
-  betAmount.value="";
+  bettorName.value=""; betAmount.value="";
+  saveState();
+}
+
+/* ✅ NEW: remove a single bettor */
+function removeBet(contestant, index){
+  const bet = state.contestants[contestant].bets[index];
+  if(!bet) return;
+
+  state.contestants[contestant].total -= bet.amount;
+  state.totalPot -= bet.amount;
+  state.contestants[contestant].bets.splice(index,1);
   saveState();
 }
 
@@ -291,9 +304,7 @@ function toggleRow(id, btn){
 
 /* ================= RENDER ================= */
 function render(){
-  contestantSelect.innerHTML =
-    Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
-
+  contestantSelect.innerHTML = Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
   contestantTable.innerHTML="";
   const payout = state.totalPot*(1-BET_HOUSE);
   let buyTotal=0;
@@ -304,18 +315,17 @@ function render(){
     const rowId="details_"+n.replace(/\W/g,"");
 
     const betsHtml = c.bets.length
-      ? c.bets.map(b=>{
-          const win = mult ? b.amount * mult : 0;
-          return `<div>👤 ${b.name} — ${fmt(b.amount)} → <strong>${fmt(win)}</strong></div>`;
-        }).join("")
+      ? c.bets.map((b,i)=>`
+          <div>
+            👤 ${b.name} — ${fmt(b.amount)}
+            <button class="remove-bet" onclick="removeBet('${n}',${i})">🗑</button>
+          </div>
+        `).join("")
       : "<div>No bets</div>";
 
     contestantTable.innerHTML+=`
       <tr>
-        <td>
-          <span class="expand-btn" onclick="toggleRow('${rowId}',this)">▶</span>
-          ${n}
-        </td>
+        <td><span class="expand-btn" onclick="toggleRow('${rowId}',this)">▶</span>${n}</td>
         <td>${fmt(c.total)}</td>
         <td>${mult?mult.toFixed(2)+'x':'—'}</td>
         <td class="buyin-col">${fmt(c.buyIn)}</td>
@@ -326,9 +336,7 @@ function render(){
         </td>
       </tr>
       <tr id="${rowId}" class="details-row">
-        <td colspan="5" class="details-cell">
-          ${betsHtml}
-        </td>
+        <td colspan="5" class="details-cell">${betsHtml}</td>
       </tr>
     `;
   }
@@ -348,24 +356,14 @@ function render(){
   secondPrize.textContent=fmt(prize*0.3);
   thirdPrize.textContent=fmt(prize*0.2);
 
-  if (isPopout) {
-    overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
-  }
+  if (isPopout) overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
 }
 
 /* ================= ENTER KEY SHORTCUTS ================= */
-contestantName.addEventListener("keydown", e => {
-  if (e.key === "Enter") addContestant();
-});
-contestantBuyIn.addEventListener("keydown", e => {
-  if (e.key === "Enter") addContestant();
-});
-bettorName.addEventListener("keydown", e => {
-  if (e.key === "Enter") placeBet();
-});
-betAmount.addEventListener("keydown", e => {
-  if (e.key === "Enter") placeBet();
-});
+contestantName.addEventListener("keydown", e => e.key==="Enter" && addContestant());
+contestantBuyIn.addEventListener("keydown", e => e.key==="Enter" && addContestant());
+bettorName.addEventListener("keydown", e => e.key==="Enter" && placeBet());
+betAmount.addEventListener("keydown", e => e.key==="Enter" && placeBet());
 
 /* ================= INIT ================= */
 loadState();
