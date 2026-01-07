@@ -71,6 +71,31 @@ th, td {
 
 .total { margin-top:6px; color:#94a3b8; }
 
+/* ===== EXPAND ROW ===== */
+.expand-btn {
+  cursor: pointer;
+  user-select: none;
+  color: #94a3b8;
+  margin-right: 6px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.expand-btn.open {
+  transform: rotate(90deg);
+}
+
+.details-row {
+  display: none;
+  background: #020617;
+}
+
+.details-cell {
+  text-align: left;
+  padding: 12px 16px;
+  color: #cbd5f5;
+}
+
 /* ================= POP-OUT MODE ================= */
 
 .popout h1,
@@ -176,10 +201,8 @@ let state = {
 const parseAmount = v => {
   if (!v) return 0;
   const val = v.toLowerCase().trim();
-
   if (val.endsWith("m")) return parseFloat(val) * 1_000_000;
   if (val.endsWith("k")) return parseFloat(val) * 1_000;
-
   return parseFloat(val);
 };
 
@@ -222,9 +245,18 @@ function addContestant(){
 function placeBet(){
   const c = contestantSelect.value;
   const amt = parseAmount(betAmount.value);
-  if(!c || !amt) return;
+  const bettor = bettorName.value.trim();
+  if(!c || !amt || !bettor) return;
+
   state.contestants[c].total += amt;
   state.totalPot += amt;
+
+  state.contestants[c].bets.push({
+    name: bettor,
+    amount: amt
+  });
+
+  bettorName.value="";
   betAmount.value="";
   saveState();
 }
@@ -247,18 +279,13 @@ function openPopout(){
   window.open(location.pathname+"?popout=1","pop","width=900,height=600");
 }
 
-/* ================= ENTER KEY SUPPORT ================= */
-["contestantName","contestantBuyIn"].forEach(id=>{
-  document.getElementById(id).addEventListener("keydown",e=>{
-    if(e.key==="Enter"){ e.preventDefault(); addContestant(); }
-  });
-});
-
-["bettorName","betAmount"].forEach(id=>{
-  document.getElementById(id).addEventListener("keydown",e=>{
-    if(e.key==="Enter"){ e.preventDefault(); placeBet(); }
-  });
-});
+/* ================= EXPAND ================= */
+function toggleRow(id, btn){
+  const row = document.getElementById(id);
+  const open = row.style.display === "table-row";
+  row.style.display = open ? "none" : "table-row";
+  btn.classList.toggle("open", !open);
+}
 
 /* ================= RENDER ================= */
 function render(){
@@ -272,10 +299,21 @@ function render(){
   for(const [n,c] of Object.entries(state.contestants)){
     buyTotal+=c.buyIn;
     const mult=c.total?payout/c.total:0;
+    const rowId="details_"+n.replace(/\W/g,"");
+
+    const betsHtml = c.bets.length
+      ? c.bets.map(b=>{
+          const win = mult ? b.amount * mult : 0;
+          return `<div>👤 ${b.name} — ${fmt(b.amount)} → <strong>${fmt(win)}</strong></div>`;
+        }).join("")
+      : "<div>No bets</div>";
 
     contestantTable.innerHTML+=`
       <tr>
-        <td>${n}</td>
+        <td>
+          <span class="expand-btn" onclick="toggleRow('${rowId}',this)">▶</span>
+          ${n}
+        </td>
         <td>${fmt(c.total)}</td>
         <td>${mult?mult.toFixed(2)+'x':'—'}</td>
         <td class="buyin-col">${fmt(c.buyIn)}</td>
@@ -284,7 +322,13 @@ function render(){
           <button class="place-btn ${state.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
           <button class="place-btn ${state.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
         </td>
-      </tr>`;
+      </tr>
+      <tr id="${rowId}" class="details-row">
+        <td colspan="5" class="details-cell">
+          ${betsHtml}
+        </td>
+      </tr>
+    `;
   }
 
   totalPot.textContent=fmt(state.totalPot);
@@ -309,4 +353,3 @@ loadState();
 
 </body>
 </html>
-
