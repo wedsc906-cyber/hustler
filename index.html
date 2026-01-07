@@ -85,7 +85,11 @@ th,td { padding:10px; border-bottom:1px solid var(--border); text-align:center }
 /* ===== SUPABASE ===== */
 const SUPABASE_URL = "https://ctirstrnatawigarrncc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_GdaFQ6Vn9HT-U9tg7iX8yw_810IiIXK";
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
 
 /* ===== CONFIG ===== */
 const ADMIN_PASSWORD = "reset123";
@@ -100,75 +104,111 @@ let state = {
 };
 
 /* ===== HELPERS ===== */
-const parseAmount = v => v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
+const parseAmount = v =>
+  v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
 const fmt = v => `$${(v||0).toLocaleString()}`;
 
 /* ===== DATABASE ===== */
 async function saveState(){
-  await supabase.from("state").update({ data: state }).eq("id",1);
+  await supabaseClient
+    .from("state")
+    .update({ data: state })
+    .eq("id", 1);
 }
 
 async function loadState(){
-  const { data } = await supabase.from("state").select("data").eq("id",1).single();
-  if(data?.data) state = data.data;
+  const { data, error } = await supabaseClient
+    .from("state")
+    .select("data")
+    .eq("id", 1)
+    .single();
+
+  if (data?.data) state = data.data;
   render();
 }
 
-supabase.channel("state")
-  .on("postgres_changes",{event:"UPDATE",table:"state"},p=>{
-    state = p.new.data;
-    render();
-  }).subscribe();
+/* ===== REALTIME ===== */
+supabaseClient
+  .channel("state-updates")
+  .on(
+    "postgres_changes",
+    { event:"UPDATE", schema:"public", table:"state" },
+    payload => {
+      state = payload.new.data;
+      render();
+    }
+  )
+  .subscribe();
 
 /* ===== ACTIONS ===== */
 function addContestant(){
-  const n=contestantName.value.trim();
-  if(!n||state.contestants[n]) return;
-  state.contestants[n]={total:0,bets:[],buyIn:parseAmount(contestantBuyIn.value)||0};
-  contestantName.value=""; contestantBuyIn.value="";
+  const n = contestantName.value.trim();
+  if(!n || state.contestants[n]) return;
+
+  state.contestants[n] = {
+    total: 0,
+    bets: [],
+    buyIn: parseAmount(contestantBuyIn.value) || 0
+  };
+
+  contestantName.value = "";
+  contestantBuyIn.value = "";
   saveState();
 }
 
 function placeBet(){
-  const c=contestantSelect.value;
-  const amt=parseAmount(betAmount.value);
-  if(!c||!amt) return;
-  state.contestants[c].total+=amt;
-  state.contestants[c].bets.push({bettor:bettorName.value,amount:amt});
-  state.totalPot+=amt;
-  bettorName.value=""; betAmount.value="";
+  const c = contestantSelect.value;
+  const amt = parseAmount(betAmount.value);
+  if(!c || !amt) return;
+
+  state.contestants[c].total += amt;
+  state.contestants[c].bets.push({
+    bettor: bettorName.value,
+    amount: amt
+  });
+
+  state.totalPot += amt;
+  bettorName.value = "";
+  betAmount.value = "";
   saveState();
 }
 
 function setPlacement(p,n){
-  Object.keys(state.placements).forEach(k=>state.placements[k]===n&&(state.placements[k]=null));
-  state.placements[p]=n;
+  Object.keys(state.placements).forEach(
+    k => state.placements[k] === n && (state.placements[k] = null)
+  );
+  state.placements[p] = n;
   saveState();
 }
 
 function resetWithPassword(){
-  if(prompt("Admin password")!==ADMIN_PASSWORD) return;
-  state={contestants:{},totalPot:0,placements:{first:null,second:null,third:null}};
+  if(prompt("Admin password") !== ADMIN_PASSWORD) return;
+  state = { contestants:{}, totalPot:0, placements:{first:null,second:null,third:null} };
   saveState();
 }
 
-function openPopout(){ window.open(location.href,"pop","width=900,height=600"); }
+function openPopout(){
+  window.open(location.href, "pop", "width=900,height=600");
+}
 
 /* ===== RENDER ===== */
 function render(){
-  contestantSelect.innerHTML=Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
-  contestantTable.innerHTML="";
-  const payout=state.totalPot*(1-BET_HOUSE);
-  let buyTotal=0;
+  contestantSelect.innerHTML =
+    Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
+
+  contestantTable.innerHTML = "";
+  const payout = state.totalPot * (1 - BET_HOUSE);
+  let buyTotal = 0;
 
   for(const [n,c] of Object.entries(state.contestants)){
-    buyTotal+=c.buyIn;
-    const mult=c.total?payout/c.total:0;
-    contestantTable.innerHTML+=`
+    buyTotal += c.buyIn;
+    const mult = c.total ? payout / c.total : 0;
+
+    contestantTable.innerHTML += `
       <tr>
         <td>${n}</td>
         <td>${fmt(c.total)}</td>
-        <td>${mult?mult.toFixed(2)+'x':'—'}</td>
+        <td>${mult ? mult.toFixed(2)+'x' : '—'}</td>
         <td>${fmt(c.buyIn)}</td>
         <td>
           <button class="place-btn ${state.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
@@ -178,30 +218,30 @@ function render(){
       </tr>`;
   }
 
-  totalPot.textContent=fmt(state.totalPot);
-  houseCut.textContent=fmt(state.totalPot*BET_HOUSE);
-  payoutPool.textContent=fmt(payout);
+  totalPot.textContent = fmt(state.totalPot);
+  houseCut.textContent = fmt(state.totalPot * BET_HOUSE);
+  payoutPool.textContent = fmt(payout);
 
-  const prize=buyTotal*(1-BUYIN_HOUSE);
-  buyInTotal.textContent=fmt(buyTotal);
-  buyInPrize.textContent=fmt(prize);
+  const prize = buyTotal * (1 - BUYIN_HOUSE);
+  buyInTotal.textContent = fmt(buyTotal);
+  buyInPrize.textContent = fmt(prize);
 
-  firstName.textContent=state.placements.first||"—";
-  secondName.textContent=state.placements.second||"—";
-  thirdName.textContent=state.placements.third||"—";
-  firstPrize.textContent=fmt(prize*0.5);
-  secondPrize.textContent=fmt(prize*0.3);
-  thirdPrize.textContent=fmt(prize*0.2);
+  firstName.textContent = state.placements.first || "—";
+  secondName.textContent = state.placements.second || "—";
+  thirdName.textContent = state.placements.third || "—";
+  firstPrize.textContent = fmt(prize * 0.5);
+  secondPrize.textContent = fmt(prize * 0.3);
+  thirdPrize.textContent = fmt(prize * 0.2);
 }
 
 /* ===== INIT ===== */
 loadState();
 
 /* ENTER SUPPORT */
-contestantName.onkeydown=e=>e.key==="Enter"&&addContestant();
-contestantBuyIn.onkeydown=e=>e.key==="Enter"&&addContestant();
-bettorName.onkeydown=e=>e.key==="Enter"&&placeBet();
-betAmount.onkeydown=e=>e.key==="Enter"&&placeBet();
+contestantName.onkeydown = e => e.key==="Enter" && addContestant();
+contestantBuyIn.onkeydown = e => e.key==="Enter" && addContestant();
+bettorName.onkeydown = e => e.key==="Enter" && placeBet();
+betAmount.onkeydown = e => e.key==="Enter" && placeBet();
 </script>
 
 </body>
