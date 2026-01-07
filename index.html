@@ -347,10 +347,26 @@ function render(){
   thirdPrize.textContent=fmt(prize*0.2);
 }
 
+/* ================= ENTER KEY SHORTCUTS ================= */
+contestantName.addEventListener("keydown", e => {
+  if (e.key === "Enter") addContestant();
+});
+
+contestantBuyIn.addEventListener("keydown", e => {
+  if (e.key === "Enter") addContestant();
+});
+
+bettorName.addEventListener("keydown", e => {
+  if (e.key === "Enter") placeBet();
+});
+
+betAmount.addEventListener("keydown", e => {
+  if (e.key === "Enter") placeBet();
+});
+
 /* ================= INIT ================= */
 loadState();
 </script>
 
 </body>
 </html>
-
