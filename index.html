@@ -45,9 +45,10 @@ input, select, button {
 }
 
 button { font-weight: 600; cursor: pointer; }
-.btn-primary { background:#2563eb; color:white; }
-.btn-secondary { background:#020617; border:1px solid var(--border); color:white; }
-.btn-danger { background:#dc2626; color:white; }
+
+.btn-primary { background: #2563eb; color: white; }
+.btn-secondary { background: #020617; border:1px solid var(--border); color:white; }
+.btn-danger { background: var(--danger); color:white; }
 
 table {
   width:100%;
@@ -61,32 +62,18 @@ th, td {
   text-align:center;
 }
 
-.total { margin-top:6px; color:#94a3b8; }
-
-/* ===== POPOUT MODE ===== */
-.popout #addContestantCard,
-.popout #placeBetCard,
-.popout #buyInCard,
-.popout #adminControls,
-.popout .buyin-col,
-.popout .house-line,
-.popout .payout-line {
-  display: none !important;
+.place-btn {
+  background:#020617;
+  border:1px solid var(--border);
+  color:white;
+  border-radius:8px;
 }
 
-.popout body { padding: 10px; }
-.popout h1 { display: none; }
+.place-btn.active { background: var(--primary); }
 
-.overview-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+.total { margin-top:6px; color:var(--muted); }
 
-.overview-pot {
-  font-size: 1rem;
-  color: #c7d2fe;
-}
+.popout-hide { display:none !important; }
 </style>
 </head>
 
@@ -114,12 +101,9 @@ th, td {
 </div>
 
 <div class="card">
-  <div style="display:flex;justify-content:space-between">
-    <div class="overview-title">
-      <h3>Overview</h3>
-      <div class="overview-pot" id="overviewPot">Total Pot $0</div>
-    </div>
-    <div id="adminControls">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h3 id="overviewTitle">Overview</h3>
+    <div>
       <button class="btn-secondary" onclick="openPopout()">📺 Pop-out</button>
       <button class="btn-danger" onclick="resetWithPassword()">Reset</button>
     </div>
@@ -132,40 +116,32 @@ th, td {
         <th>Total</th>
         <th>Mult</th>
         <th class="buyin-col">Buy-In</th>
+        <th class="place-col">Place</th>
       </tr>
     </thead>
     <tbody id="contestantTable"></tbody>
   </table>
 
-  <!-- NORMAL PAGE TOTALS -->
-  <div class="total">Total Pot: <span id="totalPotBottom">$0</span></div>
-  <div class="total house-line">House: <span id="houseCut">$0</span></div>
-  <div class="total payout-line">Payout: <span id="payoutPool">$0</span></div>
+  <div class="total" id="totalsBlock">
+    Total Pot: <span id="totalPot">$0</span><br>
+    House: <span id="houseCut">$0</span><br>
+    Payout: <span id="payoutPool">$0</span>
+  </div>
 </div>
 
 <div class="card" id="buyInCard">
   <h3>Buy-In Prize Pool</h3>
   <div>Total Buy-Ins: <span id="buyInTotal">$0</span></div>
   <div>Prize Pool: <span id="buyInPrize">$0</span></div>
+  <hr>
+  <div>🥇 <span id="firstName">—</span>: <span id="firstPrize">$0</span></div>
+  <div>🥈 <span id="secondName">—</span>: <span id="secondPrize">$0</span></div>
+  <div>🥉 <span id="thirdName">—</span>: <span id="thirdPrize">$0</span></div>
 </div>
 
 <script>
-/* ===== POPOUT DETECTION ===== */
-const isPopout = new URLSearchParams(location.search).has("popout");
-if (isPopout) document.documentElement.classList.add("popout");
-
-/* ===== AUTOSCROLL (POPOUT ONLY) ===== */
-function startAutoScroll() {
-  if (!isPopout) return;
-  setInterval(() => {
-    const max = document.documentElement.scrollHeight - window.innerHeight;
-    if (window.scrollY >= max - 2) {
-      window.scrollTo({ top: 0, behavior: "instant" });
-    } else {
-      window.scrollBy(0, 0.35);
-    }
-  }, 16);
-}
+/* ===== MODE ===== */
+const IS_POPOUT = new URLSearchParams(window.location.search).has("popout");
 
 /* ===== SUPABASE ===== */
 const SUPABASE_URL = "https://ctirstrnatawigarrncc.supabase.co";
@@ -173,31 +149,36 @@ const SUPABASE_KEY = "sb_publishable_GdaFQ6Vn9HT-U9tg7iX8yw_810IiIXK";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ===== CONFIG ===== */
+const ADMIN_PASSWORD = "reset123";
 const BET_HOUSE = 0.15;
 const BUYIN_HOUSE = 0.10;
 
 /* ===== STATE ===== */
-let state = { contestants:{}, totalPot:0 };
+let state = {
+  contestants: {},
+  totalPot: 0,
+  placements: { first:null, second:null, third:null }
+};
 
 /* ===== HELPERS ===== */
-const parseAmount = v => v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
+const parseAmount = v =>
+  v?.toLowerCase().endsWith("k") ? parseFloat(v)*1000 : parseFloat(v);
 const fmt = v => `$${(v||0).toLocaleString()}`;
 
 /* ===== DATABASE ===== */
 async function saveState(){
-  await supabaseClient.from("state")
-    .upsert({ id:1, data:state }, { onConflict:"id" });
+  await supabaseClient.from("state").upsert({ id:1, data:state });
   render();
 }
 
 async function loadState(){
-  const { data } = await supabaseClient
-    .from("state").select("data").eq("id",1).single();
-  if (data?.data) state = data.data;
+  const { data } = await supabaseClient.from("state").select("data").eq("id",1).single();
+  if(data?.data) state = data.data;
   render();
 }
 
-supabaseClient.channel("state")
+supabaseClient
+  .channel("state-updates")
   .on("postgres_changes",{event:"*",schema:"public",table:"state"},p=>{
     state = p.new.data;
     render();
@@ -207,8 +188,15 @@ supabaseClient.channel("state")
 function addContestant(){
   const n = contestantName.value.trim();
   if(!n || state.contestants[n]) return;
-  state.contestants[n] = { total:0, buyIn:parseAmount(contestantBuyIn.value)||0 };
-  contestantName.value=""; contestantBuyIn.value="";
+
+  state.contestants[n] = {
+    total:0,
+    bets:[],
+    buyIn: parseAmount(contestantBuyIn.value)||0
+  };
+
+  contestantName.value="";
+  contestantBuyIn.value="";
   saveState();
 }
 
@@ -216,15 +204,27 @@ function placeBet(){
   const c = contestantSelect.value;
   const amt = parseAmount(betAmount.value);
   if(!c || !amt) return;
+
   state.contestants[c].total += amt;
+  state.contestants[c].bets.push({bettor:bettorName.value,amount:amt});
   state.totalPot += amt;
-  bettorName.value=""; betAmount.value="";
+
+  bettorName.value="";
+  betAmount.value="";
+  saveState();
+}
+
+function setPlacement(p,n){
+  Object.keys(state.placements).forEach(k=>{
+    if(state.placements[k]===n) state.placements[k]=null;
+  });
+  state.placements[p]=n;
   saveState();
 }
 
 function resetWithPassword(){
-  if(prompt("Admin password")!=="reset123") return;
-  state={contestants:{},totalPot:0};
+  if(prompt("Admin password")!==ADMIN_PASSWORD) return;
+  state={contestants:{},totalPot:0,placements:{first:null,second:null,third:null}};
   saveState();
 }
 
@@ -244,32 +244,66 @@ function render(){
   for(const [n,c] of Object.entries(state.contestants)){
     buyTotal+=c.buyIn;
     const mult=c.total?payout/c.total:0;
+
     contestantTable.innerHTML+=`
       <tr>
         <td>${n}</td>
         <td>${fmt(c.total)}</td>
         <td>${mult?mult.toFixed(2)+'x':'—'}</td>
         <td class="buyin-col">${fmt(c.buyIn)}</td>
+        <td class="place-col">
+          <button class="place-btn ${state.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
+          <button class="place-btn ${state.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
+          <button class="place-btn ${state.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
+        </td>
       </tr>`;
   }
 
-  overviewPot.textContent = `Total Pot ${fmt(state.totalPot)}`;
-  totalPotBottom.textContent = fmt(state.totalPot);
-  houseCut.textContent = fmt(state.totalPot*BET_HOUSE);
-  payoutPool.textContent = fmt(payout);
-  buyInTotal.textContent = fmt(buyTotal);
-  buyInPrize.textContent = fmt(buyTotal*(1-BUYIN_HOUSE));
-}
+  totalPot.textContent=fmt(state.totalPot);
+  houseCut.textContent=fmt(state.totalPot*BET_HOUSE);
+  payoutPool.textContent=fmt(payout);
 
-/* ===== ENTER KEY SUPPORT ===== */
-contestantName.onkeydown = e=>e.key==="Enter"&&addContestant();
-contestantBuyIn.onkeydown = e=>e.key==="Enter"&&addContestant();
-bettorName.onkeydown = e=>e.key==="Enter"&&placeBet();
-betAmount.onkeydown = e=>e.key==="Enter"&&placeBet();
+  const prize=buyTotal*(1-BUYIN_HOUSE);
+  buyInTotal.textContent=fmt(buyTotal);
+  buyInPrize.textContent=fmt(prize);
+
+  firstName.textContent=state.placements.first||"—";
+  secondName.textContent=state.placements.second||"—";
+  thirdName.textContent=state.placements.third||"—";
+  firstPrize.textContent=fmt(prize*0.5);
+  secondPrize.textContent=fmt(prize*0.3);
+  thirdPrize.textContent=fmt(prize*0.2);
+
+  /* ===== POPOUT MODE ===== */
+  if(IS_POPOUT){
+    addContestantCard.classList.add("popout-hide");
+    placeBetCard.classList.add("popout-hide");
+    buyInCard.classList.add("popout-hide");
+    totalsBlock.classList.add("popout-hide");
+
+    document.querySelectorAll(".buyin-col,.place-col")
+      .forEach(el=>el.classList.add("popout-hide"));
+
+    overviewTitle.textContent = `Overview — Total Pot ${fmt(state.totalPot)}`;
+
+    // auto scroll
+    requestAnimationFrame(()=>{
+      window.scrollBy(0,1);
+      if(window.innerHeight+window.scrollY>=document.body.offsetHeight){
+        window.scrollTo(0,0);
+      }
+    });
+  }
+}
 
 /* ===== INIT ===== */
 loadState();
-if (isPopout) setTimeout(startAutoScroll, 1000);
+
+/* ENTER SUPPORT */
+contestantName.onkeydown=e=>e.key==="Enter"&&addContestant();
+contestantBuyIn.onkeydown=e=>e.key==="Enter"&&addContestant();
+bettorName.onkeydown=e=>e.key==="Enter"&&placeBet();
+betAmount.onkeydown=e=>e.key==="Enter"&&placeBet();
 </script>
 
 </body>
