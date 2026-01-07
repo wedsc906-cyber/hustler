@@ -127,7 +127,6 @@ th, td {
   display: none;
 }
 
-/* ✅ ADDITION: allow safe scaling in pop-out */
 .popout .card {
   transform-origin: top center;
 }
@@ -306,7 +305,6 @@ function toggleRow(id, btn){
   btn.classList.toggle("open", !open);
 }
 
-/* ✅ ADDITION: auto-scale pop-out so all contestants fit */
 function scalePopoutToFit(){
   if(!isPopout) return;
 
@@ -325,12 +323,18 @@ function scalePopoutToFit(){
 
 /* ================= RENDER ================= */
 function render(){
-  contestantSelect.innerHTML = Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
+  contestantSelect.innerHTML =
+    Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
+
   contestantTable.innerHTML="";
   const payout = state.totalPot*(1-BET_HOUSE);
   let buyTotal=0;
 
-  for(const [n,c] of Object.entries(state.contestants)){
+  /* ✅ ADDITION: sort contestants by total bet (descending) */
+  const sortedContestants = Object.entries(state.contestants)
+    .sort((a,b) => (b[1].total || 0) - (a[1].total || 0));
+
+  for(const [n,c] of sortedContestants){
     buyTotal+=c.buyIn;
     const mult=c.total?payout/c.total:0;
     const rowId="details_"+n.replace(/\W/g,"");
@@ -379,7 +383,6 @@ function render(){
 
   if (isPopout) overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
 
-  /* ✅ ADDITION: scale after render */
   scalePopoutToFit();
 }
 
