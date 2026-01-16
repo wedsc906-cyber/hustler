@@ -218,6 +218,17 @@ const SUPABASE_URL = "https://ctirstrnatawigarrncc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_GdaFQ6Vn9HT-U9tg7iX8yw_810IiIXK";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+/* ================= POOLS REALTIME SYNC ================= */
+supabaseClient.channel("pools")
+  .on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: "pools" },
+    () => {
+      location.reload();
+    }
+  )
+  .subscribe();
+
 /* ================= POOL MANAGER ================= */
 let poolCounter = 0;
 
@@ -227,44 +238,51 @@ function updateGridLayout() {
   grid.className = "pool-grid cols-" + Math.min(Math.max(count,1),4);
 }
 
-function addPool() {
+async function addPool(fromDB = false) {
+
   const tpl = document.getElementById("poolTemplate");
   const pool = tpl.content.cloneNode(true).firstElementChild;
   const poolId = ++poolCounter;
+
+  // ✅ persist pool definition
+  if (!fromDB) {
+  await supabaseClient.from("pools").insert({ id: poolId });
+}
+
   pool.dataset.poolId = poolId;
   pool.querySelector("h2").textContent = `Pool ${poolId}`;
   document.getElementById("poolGrid").appendChild(pool);
+
   initPool(pool, poolId);
   updateGridLayout();
 }
+
 
 async function deletePool(btn) {
   const pool = btn.closest(".pool");
   const deletedId = Number(pool.dataset.poolId);
 
-  // delete the removed pool
+  // remove pool definition
+  await supabaseClient.from("pools").delete().eq("id", deletedId);
+
+  // remove pool state
   await supabaseClient.from("state").delete().eq("id", deletedId);
 
-  // fetch remaining states ordered by id
+  // reindex pools table
   const { data } = await supabaseClient
-    .from("state")
-    .select("id,data")
+    .from("pools")
+    .select("id")
     .order("id");
 
-  // clear table
-  await supabaseClient.from("state").delete().neq("id", -1);
+  await supabaseClient.from("pools").delete().neq("id", -1);
 
-  // reinsert with new contiguous ids
   for (let i = 0; i < data.length; i++) {
-    await supabaseClient.from("state").insert({
-      id: i + 1,
-      data: data[i].data
-    });
+    await supabaseClient.from("pools").insert({ id: i + 1 });
   }
 
-  // hard reload guarantees subscriptions resync cleanly
   location.reload();
 }
+
 
 
 /* ================= ORIGINAL LOGIC (SCOPED) ================= */
@@ -415,20 +433,24 @@ function initPool(poolEl, poolId) {
   loadState();
 }
 
+/* ================= INIT POOLS FROM DB ================= */
 (async function initPoolsFromDB(){
   const { data } = await supabaseClient
-    .from("state")
+    .from("pools")
     .select("id")
     .order("id");
 
+  // first-ever load
   if (!data || data.length === 0) {
-    addPool(); // first-time load
+    await supabaseClient.from("pools").insert({ id: 1 });
+    addPool(true);
     return;
   }
 
+  // rebuild pools from DB
   for (let i = 0; i < data.length; i++) {
-    addPool();
-  }
+  addPool(true);
+}
 })();
 
 </script>
