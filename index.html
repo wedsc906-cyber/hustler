@@ -23,25 +23,31 @@ body {
   padding: 20px;
 }
 
-/* ===== POOL GRID (NEW) ===== */
+/* ===== POOL GRID ===== */
 .pool-controls { margin-bottom: 12px; }
+
 .pool-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   gap: 16px;
 }
+.pool-grid.cols-1 { grid-template-columns: 1fr; }
+.pool-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.pool-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.pool-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+
 .pool {
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px;
 }
+
 .pool-header {
   display:flex;
   justify-content:space-between;
   align-items:center;
 }
 
-/* ===== ORIGINAL STYLES (UNCHANGED) ===== */
+/* ===== ORIGINAL STYLES ===== */
 .card {
   background: var(--panel);
   padding: 16px;
@@ -111,6 +117,19 @@ th, td {
   cursor: pointer;
   font-size: 14px;
 }
+
+/* ================= POP-OUT MODE ================= */
+.popout h1,
+.popout .hide-in-popout,
+.popout .place-col,
+.popout .buyin-col {
+  display: none !important;
+}
+
+.popout body { padding: 10px; }
+.popout table { font-size: 18px; }
+.popout .card .total { display: none; }
+.popout .card { transform-origin: top center; }
 </style>
 </head>
 
@@ -120,9 +139,8 @@ th, td {
   <button class="btn-primary" onclick="addPool()">➕ Add Pool</button>
 </div>
 
-<div id="poolGrid" class="pool-grid"></div>
+<div id="poolGrid" class="pool-grid cols-1"></div>
 
-<!-- ===== POOL TEMPLATE (NEW) ===== -->
 <template id="poolTemplate">
 <div class="pool">
   <div class="pool-header">
@@ -130,7 +148,6 @@ th, td {
     <button class="btn-danger" onclick="deletePool(this)">✖</button>
   </div>
 
-  <!-- ===== ORIGINAL BODY HTML (UNCHANGED STRUCTURE) ===== -->
   <h1>Live Betting Pool</h1>
 
   <div class="card hide-in-popout">
@@ -138,7 +155,7 @@ th, td {
     <div class="controls">
       <input id="contestantName">
       <input id="contestantBuyIn">
-      <button class="btn-primary" onclick="addContestant()">Add</button>
+      <button class="btn-primary addContestantBtn">Add</button>
     </div>
   </div>
 
@@ -148,7 +165,7 @@ th, td {
       <input id="bettorName">
       <select id="contestantSelect"></select>
       <input id="betAmount">
-      <button class="btn-primary" onclick="placeBet()">Bet</button>
+      <button class="btn-primary placeBetBtn">Bet</button>
     </div>
   </div>
 
@@ -192,13 +209,23 @@ th, td {
 </template>
 
 <script>
-/* ===== SUPABASE (UNCHANGED) ===== */
+/* ================= POP-OUT DETECTION (RESTORED) ================= */
+const isPopout = new URLSearchParams(location.search).has("popout");
+if (isPopout) document.documentElement.classList.add("popout");
+
+/* ================= SUPABASE ================= */
 const SUPABASE_URL = "https://ctirstrnatawigarrncc.supabase.co";
 const SUPABASE_KEY = "sb_publishable_GdaFQ6Vn9HT-U9tg7iX8yw_810IiIXK";
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-/* ===== POOL MANAGER (NEW) ===== */
+/* ================= POOL MANAGER ================= */
 let poolCounter = 0;
+
+function updateGridLayout() {
+  const grid = document.getElementById("poolGrid");
+  const count = grid.children.length;
+  grid.className = "pool-grid cols-" + Math.min(Math.max(count,1),4);
+}
 
 function addPool() {
   const tpl = document.getElementById("poolTemplate");
@@ -208,191 +235,164 @@ function addPool() {
   pool.querySelector("h2").textContent = `Pool ${poolId}`;
   document.getElementById("poolGrid").appendChild(pool);
   initPool(pool, poolId);
+  updateGridLayout();
 }
 
 function deletePool(btn) {
   const pool = btn.closest(".pool");
-  const id = pool.dataset.poolId;
-  supabaseClient.from("state").delete().eq("id", id);
+  supabaseClient.from("state").delete().eq("id", pool.dataset.poolId);
   pool.remove();
+  updateGridLayout();
 }
 
-/* ===== ORIGINAL SCRIPT — WRAPPED, NOT MODIFIED ===== */
+/* ================= ORIGINAL LOGIC (SCOPED) ================= */
 function initPool(poolEl, poolId) {
+  const $ = id => poolEl.querySelector(`#${id}`);
 
-const $ = id => poolEl.querySelector(`#${id}`);
+  const ADMIN_PASSWORD = "reset123";
+  const BET_HOUSE = 0.15;
+  const BUYIN_HOUSE = 0.10;
 
-/* ================= POP-OUT DETECTION ================= */
-const isPopout = new URLSearchParams(location.search).has("popout");
-if (isPopout) document.documentElement.classList.add("popout");
+  let state = {
+    contestants: {},
+    totalPot: 0,
+    placements: { first:null, second:null, third:null }
+  };
 
-/* ================= CONFIG ================= */
-const ADMIN_PASSWORD = "reset123";
-const BET_HOUSE = 0.15;
-const BUYIN_HOUSE = 0.10;
+  const parseAmount = v => {
+    if (!v) return 0;
+    const val = v.toLowerCase().trim();
+    if (val.endsWith("m")) return parseFloat(val) * 1_000_000;
+    if (val.endsWith("k")) return parseFloat(val) * 1_000;
+    return parseFloat(val);
+  };
 
-/* ================= STATE ================= */
-let state = {
-  contestants: {},
-  totalPot: 0,
-  placements: { first:null, second:null, third:null }
-};
+  const fmt = v => `$${(v||0).toLocaleString()}`;
+  const fmtPayout = v => `$${Math.floor(v||0).toLocaleString()}`;
 
-/* ================= HELPERS ================= */
-const parseAmount = v => {
-  if (!v) return 0;
-  const val = v.toLowerCase().trim();
-  if (val.endsWith("m")) return parseFloat(val) * 1_000_000;
-  if (val.endsWith("k")) return parseFloat(val) * 1_000;
-  return parseFloat(val);
-};
-
-const fmt = v => `$${(v||0).toLocaleString()}`;
-const fmtPayout = v => `$${Math.floor(v||0).toLocaleString()}`;
-
-/* ================= DATABASE ================= */
-async function saveState(){
-  await supabaseClient.from("state")
-    .upsert({ id: poolId, data:state }, { onConflict:"id" });
-  render();
-}
-
-async function loadState(){
-  const { data } = await supabaseClient
-    .from("state").select("data").eq("id",poolId).single();
-  if (data?.data) state = data.data;
-  render();
-}
-
-supabaseClient.channel("state_"+poolId)
-  .on("postgres_changes",{event:"*",schema:"public",table:"state",filter:`id=eq.${poolId}`},p=>{
-    state = p.new.data;
-    render();
-  }).subscribe();
-
-/* ================= ACTIONS ================= */
-function addContestant(){
-  const n = $("contestantName").value.trim();
-  if(!n || state.contestants[n]) return;
-  state.contestants[n] = { total:0, bets:[], buyIn: parseAmount($("contestantBuyIn").value) || 0 };
-  $("contestantName").value=""; $("contestantBuyIn").value="";
-  saveState();
-}
-
-function placeBet(){
-  const c = $("contestantSelect").value;
-  const amt = parseAmount($("betAmount").value);
-  const bettor = $("bettorName").value.trim();
-  if(!c || !amt || !bettor) return;
-
-  state.contestants[c].total += amt;
-  state.totalPot += amt;
-  state.contestants[c].bets.push({ name: bettor, amount: amt });
-
-  $("bettorName").value=""; $("betAmount").value="";
-  saveState();
-}
-
-function removeBet(contestant, index){
-  const bet = state.contestants[contestant].bets[index];
-  if(!bet) return;
-
-  state.contestants[contestant].total -= bet.amount;
-  state.totalPot -= bet.amount;
-  state.contestants[contestant].bets.splice(index,1);
-  saveState();
-}
-
-function setPlacement(p,n){
-  Object.keys(state.placements).forEach(k=>{
-    if(state.placements[k]===n) state.placements[k]=null;
-  });
-  state.placements[p]=n;
-  saveState();
-}
-
-function resetWithPassword(){
-  if(prompt("Admin password")!==ADMIN_PASSWORD) return;
-  state={contestants:{},totalPot:0,placements:{first:null,second:null,third:null}};
-  saveState();
-}
-
-function openPopout(){
-  window.open(location.pathname+"?popout=1","pop","width=900,height=600");
-}
-
-/* ================= EXPAND ================= */
-function toggleRow(id, btn){
-  const row = document.getElementById(id);
-  const open = row.style.display === "table-row";
-  row.style.display = open ? "none" : "table-row";
-  btn.classList.toggle("open", !open);
-}
-
-/* ================= RENDER ================= */
-function render(){
-  $("contestantSelect").innerHTML =
-    Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
-
-  $("contestantTable").innerHTML="";
-  const payout = state.totalPot*(1-BET_HOUSE);
-  let buyTotal=0;
-
-  const sortedContestants = Object.entries(state.contestants)
-    .sort((a,b) => (b[1].total || 0) - (a[1].total || 0));
-
-  for(const [n,c] of sortedContestants){
-    buyTotal+=c.buyIn;
-    const mult=c.total?payout/c.total:0;
-    const rowId=`details_${poolId}_${n.replace(/\W/g,"")}`;
-
-    const betsHtml = c.bets.length
-      ? c.bets.map((b,i)=>`
-        <div>
-          👤 ${b.name} — ${fmt(b.amount)}
-          <span style="color:#22c55e;font-weight:600">→ ${fmtPayout(b.amount*mult)}</span>
-          <button class="remove-bet" onclick="removeBet('${n}',${i})">🗑</button>
-        </div>`).join("")
-      : "<div>No bets</div>";
-
-    $("contestantTable").innerHTML+=`
-      <tr>
-        <td><span class="expand-btn" onclick="toggleRow('${rowId}',this)">▶</span>${n}</td>
-        <td>${fmt(c.total)}</td>
-        <td>${mult?mult.toFixed(2)+'x':'—'}</td>
-        <td>${fmt(c.buyIn)}</td>
-        <td>
-          <button class="place-btn ${state.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
-          <button class="place-btn ${state.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
-          <button class="place-btn ${state.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
-        </td>
-      </tr>
-      <tr id="${rowId}" class="details-row">
-        <td colspan="5" class="details-cell">${betsHtml}</td>
-      </tr>`;
+  function scalePopoutToFit(){
+    if(!isPopout) return;
+    const card = poolEl.querySelector(".card");
+    if(!card) return;
+    card.style.transform = "scale(1)";
+    const available = window.innerHeight - 20;
+    const height = card.scrollHeight;
+    if(height > available){
+      card.style.transform = `scale(${available / height})`;
+    }
   }
 
-  $("totalPot").textContent=fmt(state.totalPot);
-  $("houseCut").textContent=fmt(state.totalPot*BET_HOUSE);
-  $("payoutPool").textContent=fmt(payout);
+  async function saveState(){
+    await supabaseClient.from("state")
+      .upsert({ id: poolId, data:state }, { onConflict:"id" });
+    render();
+  }
 
-  const prize=buyTotal*(1-BUYIN_HOUSE);
-  $("buyInTotal").textContent=fmt(buyTotal);
-  $("buyInPrize").textContent=fmt(prize);
+  async function loadState(){
+    const { data } = await supabaseClient
+      .from("state").select("data").eq("id",poolId).single();
+    if (data?.data) state = data.data;
+    render();
+  }
 
-  $("firstName").textContent=state.placements.first||"—";
-  $("secondName").textContent=state.placements.second||"—";
-  $("thirdName").textContent=state.placements.third||"—";
-  $("firstPrize").textContent=fmt(prize*0.5);
-  $("secondPrize").textContent=fmt(prize*0.3);
-  $("thirdPrize").textContent=fmt(prize*0.2);
+  supabaseClient.channel("state_"+poolId)
+    .on("postgres_changes",{event:"*",schema:"public",table:"state",filter:`id=eq.${poolId}`},
+      p => { state = p.new.data; render(); }
+    ).subscribe();
+
+  function addContestant(){
+    const n = $("contestantName").value.trim();
+    if(!n || state.contestants[n]) return;
+    state.contestants[n] = { total:0, bets:[], buyIn: parseAmount($("contestantBuyIn").value) || 0 };
+    $("contestantName").value=""; $("contestantBuyIn").value="";
+    saveState();
+  }
+
+  function placeBet(){
+    const c = $("contestantSelect").value;
+    const amt = parseAmount($("betAmount").value);
+    const bettor = $("bettorName").value.trim();
+    if(!c || !amt || !bettor) return;
+
+    state.contestants[c].total += amt;
+    state.totalPot += amt;
+    state.contestants[c].bets.push({ name: bettor, amount: amt });
+
+    $("bettorName").value=""; $("betAmount").value="";
+    saveState();
+  }
+
+  poolEl.querySelector(".addContestantBtn").onclick = addContestant;
+  poolEl.querySelector(".placeBetBtn").onclick = placeBet;
+
+  $("contestantName").addEventListener("keydown", e => e.key==="Enter" && addContestant());
+  $("contestantBuyIn").addEventListener("keydown", e => e.key==="Enter" && addContestant());
+  $("bettorName").addEventListener("keydown", e => e.key==="Enter" && placeBet());
+  $("betAmount").addEventListener("keydown", e => e.key==="Enter" && placeBet());
+
+  function render(){
+    $("contestantSelect").innerHTML =
+      Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
+
+    $("contestantTable").innerHTML="";
+    const payout = state.totalPot*(1-BET_HOUSE);
+    let buyTotal=0;
+
+    const sorted = Object.entries(state.contestants)
+      .sort((a,b)=>(b[1].total||0)-(a[1].total||0));
+
+    for(const [n,c] of sorted){
+      buyTotal+=c.buyIn;
+      const mult=c.total?payout/c.total:0;
+      const rowId=`details_${poolId}_${n.replace(/\W/g,"")}`;
+
+      const betsHtml = c.bets.length
+        ? c.bets.map((b,i)=>`
+          <div>
+            👤 ${b.name} — ${fmt(b.amount)}
+            <span style="color:#22c55e;font-weight:600">→ ${fmtPayout(b.amount*mult)}</span>
+            <button class="remove-bet" onclick="removeBet('${n}',${i})">🗑</button>
+          </div>`).join("")
+        : "<div>No bets</div>";
+
+      $("contestantTable").innerHTML+=`
+        <tr>
+          <td><span class="expand-btn" onclick="toggleRow('${rowId}',this)">▶</span>${n}</td>
+          <td>${fmt(c.total)}</td>
+          <td>${mult?mult.toFixed(2)+'x':'—'}</td>
+          <td>${fmt(c.buyIn)}</td>
+          <td>
+            <button class="place-btn ${state.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
+            <button class="place-btn ${state.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
+            <button class="place-btn ${state.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
+          </td>
+        </tr>
+        <tr id="${rowId}" class="details-row">
+          <td colspan="5" class="details-cell">${betsHtml}</td>
+        </tr>`;
+    }
+
+    $("totalPot").textContent=fmt(state.totalPot);
+    $("houseCut").textContent=fmt(state.totalPot*BET_HOUSE);
+    $("payoutPool").textContent=fmt(payout);
+
+    const prize=buyTotal*(1-BUYIN_HOUSE);
+    $("buyInTotal").textContent=fmt(buyTotal);
+    $("buyInPrize").textContent=fmt(prize);
+
+    $("firstName").textContent=state.placements.first||"—";
+    $("secondName").textContent=state.placements.second||"—";
+    $("thirdName").textContent=state.placements.third||"—";
+    $("firstPrize").textContent=fmt(prize*0.5);
+    $("secondPrize").textContent=fmt(prize*0.3);
+    $("thirdPrize").textContent=fmt(prize*0.2);
+
+    scalePopoutToFit();
+  }
+
+  loadState();
 }
 
-/* ================= INIT ================= */
-loadState();
-}
-
-/* create first pool */
 addPool();
 </script>
 
