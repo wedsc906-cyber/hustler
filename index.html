@@ -443,15 +443,21 @@ function initPool(poolEl, poolId) {
   // first-ever load
   if (!data || data.length === 0) {
     await supabaseClient.from("pools").insert({ id: 1 });
+    poolCounter = 0;
     addPool(true);
     return;
   }
 
+  // reset counter; addPool will increment
+  poolCounter = 0;
+
   // rebuild pools from DB
   for (let i = 0; i < data.length; i++) {
-  addPool(true);
-}
+    addPool(true);
+  }
 })();
+
+
 
 </script>
 
