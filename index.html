@@ -415,7 +415,22 @@ function initPool(poolEl, poolId) {
   loadState();
 }
 
-addPool();
+(async function initPoolsFromDB(){
+  const { data } = await supabaseClient
+    .from("state")
+    .select("id")
+    .order("id");
+
+  if (!data || data.length === 0) {
+    addPool(); // first-time load
+    return;
+  }
+
+  for (let i = 0; i < data.length; i++) {
+    addPool();
+  }
+})();
+
 </script>
 
 </body>
