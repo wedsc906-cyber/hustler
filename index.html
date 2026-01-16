@@ -238,12 +238,29 @@ function addPool() {
   updateGridLayout();
 }
 
-function deletePool(btn) {
+async function deletePool(btn) {
   const pool = btn.closest(".pool");
-  supabaseClient.from("state").delete().eq("id", pool.dataset.poolId);
+  const deletedId = Number(pool.dataset.poolId);
+
+  // delete state for the removed pool
+  await supabaseClient.from("state").delete().eq("id", deletedId);
+
+  // remove pool from DOM
   pool.remove();
+
+  // re-number remaining pools visually
+  const pools = Array.from(document.querySelectorAll(".pool"));
+
+  pools.forEach((el, index) => {
+    const newId = index + 1;
+    el.dataset.poolId = newId;
+    el.querySelector("h2").textContent = `Pool ${newId}`;
+  });
+
+  poolCounter = pools.length;
   updateGridLayout();
 }
+
 
 /* ================= ORIGINAL LOGIC (SCOPED) ================= */
 function initPool(poolEl, poolId) {
