@@ -242,23 +242,28 @@ async function deletePool(btn) {
   const pool = btn.closest(".pool");
   const deletedId = Number(pool.dataset.poolId);
 
-  // delete state for the removed pool
+  // delete the removed pool
   await supabaseClient.from("state").delete().eq("id", deletedId);
 
-  // remove pool from DOM
-  pool.remove();
+  // fetch remaining states ordered by id
+  const { data } = await supabaseClient
+    .from("state")
+    .select("id,data")
+    .order("id");
 
-  // re-number remaining pools visually
-  const pools = Array.from(document.querySelectorAll(".pool"));
+  // clear table
+  await supabaseClient.from("state").delete().neq("id", -1);
 
-  pools.forEach((el, index) => {
-    const newId = index + 1;
-    el.dataset.poolId = newId;
-    el.querySelector("h2").textContent = `Pool ${newId}`;
-  });
+  // reinsert with new contiguous ids
+  for (let i = 0; i < data.length; i++) {
+    await supabaseClient.from("state").insert({
+      id: i + 1,
+      data: data[i].data
+    });
+  }
 
-  poolCounter = pools.length;
-  updateGridLayout();
+  // hard reload guarantees subscriptions resync cleanly
+  location.reload();
 }
 
 
