@@ -106,6 +106,35 @@ th, td {
   font-size: 14px;
 }
 
+/* ===== COLUMN TABS ===== */
+.column-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.column-tab {
+  background: #020617;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.column-tab.active {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.column-tab .remove-column {
+  margin-left: 8px;
+  color: #f87171;
+  font-size: 12px;
+}
+
 /* ================= POP-OUT MODE ================= */
 
 .popout h1,
@@ -138,8 +167,17 @@ th, td {
 <h1>Live Betting Pool</h1>
 
 <div class="card hide-in-popout">
+  <h3>Spalten verwalten</h3>
+  <div class="controls">
+    <input id="newColumnName" placeholder="Neue Spalte (z.B. Runde 1)">
+    <button class="btn-primary" onclick="addColumn()">+ Spalte</button>
+  </div>
+</div>
+
+<div class="card hide-in-popout">
   <h3>Add Contestant</h3>
   <div class="controls">
+    <select id="columnSelectContestant"></select>
     <input id="contestantName" placeholder="Contestant name (Enter to add)">
     <input id="contestantBuyIn" placeholder="Buy-in (1k, 1m)">
     <button class="btn-primary" onclick="addContestant()">Add</button>
@@ -149,6 +187,7 @@ th, td {
 <div class="card hide-in-popout">
   <h3>Place Bet</h3>
   <div class="controls">
+    <select id="columnSelectBet"></select>
     <input id="bettorName" placeholder="Bettor name (Enter to bet)">
     <select id="contestantSelect"></select>
     <input id="betAmount" placeholder="Amount (1k, 1m)">
@@ -164,6 +203,8 @@ th, td {
       <button class="btn-danger" onclick="resetWithPassword()">Reset</button>
     </div>
   </div>
+
+  <div class="column-tabs" id="columnTabs"></div>
 
   <table>
     <thead>
@@ -210,9 +251,8 @@ const BUYIN_HOUSE = 0.10;
 
 /* ================= STATE ================= */
 let state = {
-  contestants: {},
-  totalPot: 0,
-  placements: { first:null, second:null, third:null }
+  columns: { "Default": { contestants: {}, totalPot: 0, placements: { first:null, second:null, third:null } } },
+  activeColumn: "Default"
 };
 
 /* ================= HELPERS ================= */
@@ -226,6 +266,8 @@ const parseAmount = v => {
 
 const fmt = v => `$${(v||0).toLocaleString()}`;
 const fmtPayout = v => `$${Math.floor(v||0).toLocaleString()}`;
+
+const getActiveColumnData = () => state.columns[state.activeColumn] || { contestants: {}, totalPot: 0, placements: { first:null, second:null, third:null } };
 
 /* ================= DATABASE ================= */
 async function saveState(){
@@ -247,50 +289,77 @@ supabaseClient.channel("state")
     render();
   }).subscribe();
 
+/* ================= COLUMN ACTIONS ================= */
+function addColumn(){
+  const name = newColumnName.value.trim();
+  if(!name || state.columns[name]) return;
+  state.columns[name] = { contestants: {}, totalPot: 0, placements: { first:null, second:null, third:null } };
+  newColumnName.value = "";
+  saveState();
+}
+
+function setActiveColumn(name){
+  state.activeColumn = name;
+  saveState();
+}
+
+function removeColumn(name){
+  if(Object.keys(state.columns).length <= 1) return alert("Mindestens eine Spalte muss bleiben!");
+  if(!confirm(`Spalte "${name}" wirklich löschen?`)) return;
+  delete state.columns[name];
+  if(state.activeColumn === name) state.activeColumn = Object.keys(state.columns)[0];
+  saveState();
+}
+
 /* ================= ACTIONS ================= */
 function addContestant(){
+  const colName = columnSelectContestant.value;
   const n = contestantName.value.trim();
-  if(!n || state.contestants[n]) return;
-  state.contestants[n] = { total:0, bets:[], buyIn: parseAmount(contestantBuyIn.value) || 0 };
+  if(!n || !colName || state.columns[colName].contestants[n]) return;
+  state.columns[colName].contestants[n] = { total:0, bets:[], buyIn: parseAmount(contestantBuyIn.value) || 0 };
   contestantName.value=""; contestantBuyIn.value="";
   saveState();
 }
 
 function placeBet(){
+  const colName = columnSelectBet.value;
   const c = contestantSelect.value;
   const amt = parseAmount(betAmount.value);
   const bettor = bettorName.value.trim();
-  if(!c || !amt || !bettor) return;
+  if(!c || !amt || !bettor || !colName) return;
 
-  state.contestants[c].total += amt;
-  state.totalPot += amt;
-  state.contestants[c].bets.push({ name: bettor, amount: amt });
+  const col = state.columns[colName];
+  col.contestants[c].total += amt;
+  col.totalPot += amt;
+  col.contestants[c].bets.push({ name: bettor, amount: amt });
 
   bettorName.value=""; betAmount.value="";
   saveState();
 }
 
-function removeBet(contestant, index){
-  const bet = state.contestants[contestant].bets[index];
+function removeBet(colName, contestant, index){
+  const col = state.columns[colName];
+  const bet = col.contestants[contestant].bets[index];
   if(!bet) return;
 
-  state.contestants[contestant].total -= bet.amount;
-  state.totalPot -= bet.amount;
-  state.contestants[contestant].bets.splice(index,1);
+  col.contestants[contestant].total -= bet.amount;
+  col.totalPot -= bet.amount;
+  col.contestants[contestant].bets.splice(index,1);
   saveState();
 }
 
 function setPlacement(p,n){
-  Object.keys(state.placements).forEach(k=>{
-    if(state.placements[k]===n) state.placements[k]=null;
+  const col = getActiveColumnData();
+  Object.keys(col.placements).forEach(k=>{
+    if(col.placements[k]===n) col.placements[k]=null;
   });
-  state.placements[p]=n;
+  col.placements[p]=n;
   saveState();
 }
 
 function resetWithPassword(){
   if(prompt("Admin password")!==ADMIN_PASSWORD) return;
-  state={contestants:{},totalPot:0,placements:{first:null,second:null,third:null}};
+  state={ columns: { "Default": { contestants: {}, totalPot: 0, placements: { first:null, second:null, third:null } } }, activeColumn: "Default" };
   saveState();
 }
 
@@ -324,15 +393,33 @@ function scalePopoutToFit(){
 
 /* ================= RENDER ================= */
 function render(){
+  const col = getActiveColumnData();
+
+  // Column tabs
+  columnTabs.innerHTML = Object.keys(state.columns).map(name => {
+    const isActive = name === state.activeColumn;
+    const canRemove = Object.keys(state.columns).length > 1;
+    return `
+      <div class="column-tab ${isActive?'active':''}" onclick="setActiveColumn('${name}')">
+        ${name}
+        ${canRemove && !isPopout ? `<span class="remove-column" onclick="event.stopPropagation(); removeColumn('${name}')">✕</span>` : ''}
+      </div>
+    `;
+  }).join("");
+
+  // Column selects
+  const columnOptions = Object.keys(state.columns).map(n=>`<option ${n===state.activeColumn?'selected':''}>${n}</option>`).join("");
+  columnSelectContestant.innerHTML = columnOptions;
+  columnSelectBet.innerHTML = columnOptions;
+
   contestantSelect.innerHTML =
-    Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
+    Object.keys(col.contestants).map(n=>`<option>${n}</option>`).join("");
 
   contestantTable.innerHTML="";
-  const payout = state.totalPot*(1-BET_HOUSE);
+  const payout = col.totalPot*(1-BET_HOUSE);
   let buyTotal=0;
 
-  /* ✅ ADDITION: sort contestants by total bet (descending) */
-  const sortedContestants = Object.entries(state.contestants)
+  const sortedContestants = Object.entries(col.contestants)
     .sort((a,b) => (b[1].total || 0) - (a[1].total || 0));
 
   for(const [n,c] of sortedContestants){
@@ -347,7 +434,7 @@ function render(){
           <div>
             👤 ${b.name} — ${fmt(b.amount)}
             <span style="color: #22c55e; font-weight: 600;">→ ${fmtPayout(payout)}</span>
-            <button class="remove-bet" onclick="removeBet('${n}',${i})">🗑</button>
+            <button class="remove-bet" onclick="removeBet('${state.activeColumn}','${n}',${i})">🗑</button>
           </div>
         `;
         }).join("")
@@ -360,9 +447,9 @@ function render(){
         <td>${mult?mult.toFixed(2)+'x':'—'}</td>
         <td class="buyin-col">${fmt(c.buyIn)}</td>
         <td class="place-col">
-          <button class="place-btn ${state.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
-          <button class="place-btn ${state.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
-          <button class="place-btn ${state.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
+          <button class="place-btn ${col.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
+          <button class="place-btn ${col.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
+          <button class="place-btn ${col.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
         </td>
       </tr>
       <tr id="${rowId}" class="details-row">
@@ -371,27 +458,28 @@ function render(){
     `;
   }
 
-  totalPot.textContent=fmt(state.totalPot);
-  houseCut.textContent=fmt(state.totalPot*BET_HOUSE);
+  totalPot.textContent=fmt(col.totalPot);
+  houseCut.textContent=fmt(col.totalPot*BET_HOUSE);
   payoutPool.textContent=fmt(payout);
 
   const prize=buyTotal*(1-BUYIN_HOUSE);
   buyInTotal.textContent=fmt(buyTotal);
   buyInPrize.textContent=fmt(prize);
 
-  firstName.textContent=state.placements.first||"—";
-  secondName.textContent=state.placements.second||"—";
-  thirdName.textContent=state.placements.third||"—";
+  firstName.textContent=col.placements.first||"—";
+  secondName.textContent=col.placements.second||"—";
+  thirdName.textContent=col.placements.third||"—";
   firstPrize.textContent=fmt(prize*0.5);
   secondPrize.textContent=fmt(prize*0.3);
   thirdPrize.textContent=fmt(prize*0.2);
 
-  if (isPopout) overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
+  if (isPopout) overviewTitle.textContent = `${state.activeColumn} — Pot: ${fmt(col.totalPot)}`;
 
   scalePopoutToFit();
 }
 
 /* ================= ENTER KEY SHORTCUTS ================= */
+newColumnName.addEventListener("keydown", e => e.key==="Enter" && addColumn());
 contestantName.addEventListener("keydown", e => e.key==="Enter" && addContestant());
 contestantBuyIn.addEventListener("keydown", e => e.key==="Enter" && addContestant());
 bettorName.addEventListener("keydown", e => e.key==="Enter" && placeBet());
