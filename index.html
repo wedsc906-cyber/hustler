@@ -8,8 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <style>
 :root {
   --bg:#0f172a; --panel:#020617; --border:#334155;
@@ -66,12 +64,13 @@ th, td {
   border:1px solid var(--border);
   color:white;
   border-radius:8px;
+  padding: 6px 10px;
+  margin: 2px;
 }
 .place-btn.active { background:#2563eb; }
 
 .total { margin-top:6px; color:#94a3b8; }
 
-/* ===== EXPAND ROW ===== */
 .expand-btn {
   cursor: pointer;
   user-select: none;
@@ -96,7 +95,6 @@ th, td {
   color: #cbd5f5;
 }
 
-/* remove bettor button */
 .remove-bet {
   margin-left: 8px;
   background: transparent;
@@ -106,7 +104,38 @@ th, td {
   font-size: 14px;
 }
 
-/* ================= POP-OUT MODE ================= */
+.column-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.column-tab {
+  background: #020617;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.column-tab:hover {
+  border-color: #2563eb;
+}
+
+.column-tab.active {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.column-tab .remove-column {
+  margin-left: 8px;
+  color: #f87171;
+  font-size: 12px;
+}
 
 .popout h1,
 .popout .hide-in-popout,
@@ -138,8 +167,17 @@ th, td {
 <h1>Live Betting Pool</h1>
 
 <div class="card hide-in-popout">
+  <h3>Spalten verwalten</h3>
+  <div class="controls">
+    <input id="newColumnName" placeholder="Neue Spalte (z.B. Runde 1)">
+    <button class="btn-primary" onclick="addColumn()">+ Spalte</button>
+  </div>
+</div>
+
+<div class="card hide-in-popout">
   <h3>Add Contestant</h3>
   <div class="controls">
+    <select id="columnSelectContestant"></select>
     <input id="contestantName" placeholder="Contestant name (Enter to add)">
     <input id="contestantBuyIn" placeholder="Buy-in (1k, 1m)">
     <button class="btn-primary" onclick="addContestant()">Add</button>
@@ -149,6 +187,7 @@ th, td {
 <div class="card hide-in-popout">
   <h3>Place Bet</h3>
   <div class="controls">
+    <select id="columnSelectBet"></select>
     <input id="bettorName" placeholder="Bettor name (Enter to bet)">
     <select id="contestantSelect"></select>
     <input id="betAmount" placeholder="Amount (1k, 1m)">
@@ -157,13 +196,17 @@ th, td {
 </div>
 
 <div class="card">
-  <div style="display:flex;justify-content:space-between">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
     <h3 id="overviewTitle">Overview</h3>
     <div class="hide-in-popout">
       <button class="btn-secondary" onclick="openPopout()">📺 Pop-out</button>
+      <button class="btn-secondary" onclick="exportData()">💾 Export</button>
+      <button class="btn-secondary" onclick="importData()">📂 Import</button>
       <button class="btn-danger" onclick="resetWithPassword()">Reset</button>
     </div>
   </div>
+
+  <div class="column-tabs" id="columnTabs"></div>
 
   <table>
     <thead>
@@ -193,26 +236,29 @@ th, td {
   <div>🥉 <span id="thirdName">—</span>: <span id="thirdPrize">$0</span></div>
 </div>
 
+<input type="file" id="importFile" style="display:none" accept=".json">
+
 <script>
 /* ================= POP-OUT DETECTION ================= */
 const isPopout = new URLSearchParams(location.search).has("popout");
 if (isPopout) document.documentElement.classList.add("popout");
 
-/* ================= SUPABASE ================= */
-const SUPABASE_URL = "https://ctirstrnatawigarrncc.supabase.co";
-const SUPABASE_KEY = "sb_publishable_GdaFQ6Vn9HT-U9tg7iX8yw_810IiIXK";
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 /* ================= CONFIG ================= */
 const ADMIN_PASSWORD = "reset123";
 const BET_HOUSE = 0.15;
 const BUYIN_HOUSE = 0.10;
+const STORAGE_KEY = 'betting_pool_state';
 
 /* ================= STATE ================= */
 let state = {
-  contestants: {},
-  totalPot: 0,
-  placements: { first:null, second:null, third:null }
+  columns: { 
+    "Default": { 
+      contestants: {}, 
+      totalPot: 0, 
+      placements: { first:null, second:null, third:null } 
+    } 
+  },
+  activeColumn: "Default"
 };
 
 /* ================= HELPERS ================= */
@@ -227,70 +273,188 @@ const parseAmount = v => {
 const fmt = v => `$${(v||0).toLocaleString()}`;
 const fmtPayout = v => `$${Math.floor(v||0).toLocaleString()}`;
 
-/* ================= DATABASE ================= */
-async function saveState(){
-  await supabaseClient.from("state")
-    .upsert({ id:1, data:state }, { onConflict:"id" });
+const getActiveColumnData = () => state.columns[state.activeColumn] || { 
+  contestants: {}, 
+  totalPot: 0, 
+  placements: { first:null, second:null, third:null } 
+};
+
+/* ================= LOCAL STORAGE ================= */
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    broadcastUpdate();
+  } catch (e) {
+    console.error('Failed to save state:', e);
+  }
   render();
 }
 
-async function loadState(){
-  const { data } = await supabaseClient
-    .from("state").select("data").eq("id",1).single();
-  if (data?.data) state = data.data;
+function loadState() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      state = JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error('Failed to load state:', e);
+  }
   render();
 }
 
-supabaseClient.channel("state")
-  .on("postgres_changes",{event:"*",schema:"public",table:"state"},p=>{
-    state = p.new.data;
+/* ================= BROADCAST CHANNEL (sync between tabs) ================= */
+const bc = new BroadcastChannel('betting_pool');
+
+bc.onmessage = (event) => {
+  if (event.data.type === 'state_update') {
+    state = event.data.state;
     render();
-  }).subscribe();
+  }
+};
+
+function broadcastUpdate() {
+  bc.postMessage({ type: 'state_update', state: state });
+}
+
+/* ================= EXPORT/IMPORT ================= */
+function exportData() {
+  const dataStr = JSON.stringify(state, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `betting_pool_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData() {
+  importFile.click();
+}
+
+importFile.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const imported = JSON.parse(event.target.result);
+      if (imported.columns && imported.activeColumn) {
+        state = imported;
+        saveState();
+        alert('✅ Daten erfolgreich importiert!');
+      } else {
+        alert('❌ Ungültiges Dateiformat!');
+      }
+    } catch (e) {
+      alert('❌ Fehler beim Importieren: ' + e.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+/* ================= COLUMN ACTIONS ================= */
+function addColumn(){
+  const name = newColumnName.value.trim();
+  if(!name || state.columns[name]) return;
+  state.columns[name] = { 
+    contestants: {}, 
+    totalPot: 0, 
+    placements: { first:null, second:null, third:null } 
+  };
+  newColumnName.value = "";
+  saveState();
+}
+
+function setActiveColumn(name){
+  state.activeColumn = name;
+  saveState();
+}
+
+function removeColumn(name){
+  if(Object.keys(state.columns).length <= 1) {
+    alert("Mindestens eine Spalte muss bleiben!");
+    return;
+  }
+  if(!confirm(`Spalte "${name}" wirklich löschen?`)) return;
+  delete state.columns[name];
+  if(state.activeColumn === name) {
+    state.activeColumn = Object.keys(state.columns)[0];
+  }
+  saveState();
+}
 
 /* ================= ACTIONS ================= */
 function addContestant(){
+  const colName = columnSelectContestant.value;
   const n = contestantName.value.trim();
-  if(!n || state.contestants[n]) return;
-  state.contestants[n] = { total:0, bets:[], buyIn: parseAmount(contestantBuyIn.value) || 0 };
-  contestantName.value=""; contestantBuyIn.value="";
+  if(!n || !colName || state.columns[colName].contestants[n]) return;
+  
+  state.columns[colName].contestants[n] = { 
+    total:0, 
+    bets:[], 
+    buyIn: parseAmount(contestantBuyIn.value) || 0 
+  };
+  
+  contestantName.value=""; 
+  contestantBuyIn.value="";
   saveState();
 }
 
 function placeBet(){
+  const colName = columnSelectBet.value;
   const c = contestantSelect.value;
   const amt = parseAmount(betAmount.value);
   const bettor = bettorName.value.trim();
-  if(!c || !amt || !bettor) return;
+  
+  if(!c || !amt || !bettor || !colName) return;
 
-  state.contestants[c].total += amt;
-  state.totalPot += amt;
-  state.contestants[c].bets.push({ name: bettor, amount: amt });
+  const col = state.columns[colName];
+  col.contestants[c].total += amt;
+  col.totalPot += amt;
+  col.contestants[c].bets.push({ name: bettor, amount: amt });
 
-  bettorName.value=""; betAmount.value="";
+  bettorName.value=""; 
+  betAmount.value="";
   saveState();
 }
 
-function removeBet(contestant, index){
-  const bet = state.contestants[contestant].bets[index];
+function removeBet(colName, contestant, index){
+  const col = state.columns[colName];
+  const bet = col.contestants[contestant].bets[index];
   if(!bet) return;
 
-  state.contestants[contestant].total -= bet.amount;
-  state.totalPot -= bet.amount;
-  state.contestants[contestant].bets.splice(index,1);
+  col.contestants[contestant].total -= bet.amount;
+  col.totalPot -= bet.amount;
+  col.contestants[contestant].bets.splice(index,1);
   saveState();
 }
 
 function setPlacement(p,n){
-  Object.keys(state.placements).forEach(k=>{
-    if(state.placements[k]===n) state.placements[k]=null;
+  const col = getActiveColumnData();
+  Object.keys(col.placements).forEach(k=>{
+    if(col.placements[k]===n) col.placements[k]=null;
   });
-  state.placements[p]=n;
+  col.placements[p]=n;
   saveState();
 }
 
 function resetWithPassword(){
   if(prompt("Admin password")!==ADMIN_PASSWORD) return;
-  state={contestants:{},totalPot:0,placements:{first:null,second:null,third:null}};
+  
+  state = { 
+    columns: { 
+      "Default": { 
+        contestants: {}, 
+        totalPot: 0, 
+        placements: { first:null, second:null, third:null } 
+      } 
+    }, 
+    activeColumn: "Default" 
+  };
+  
   saveState();
 }
 
@@ -324,30 +488,53 @@ function scalePopoutToFit(){
 
 /* ================= RENDER ================= */
 function render(){
-  contestantSelect.innerHTML =
-    Object.keys(state.contestants).map(n=>`<option>${n}</option>`).join("");
+  const col = getActiveColumnData();
 
+  // Column tabs
+  columnTabs.innerHTML = Object.keys(state.columns).map(name => {
+    const isActive = name === state.activeColumn;
+    const canRemove = Object.keys(state.columns).length > 1;
+    return `
+      <div class="column-tab ${isActive?'active':''}" onclick="setActiveColumn('${name}')">
+        ${name}
+        ${canRemove && !isPopout ? `<span class="remove-column" onclick="event.stopPropagation(); removeColumn('${name}')">✕</span>` : ''}
+      </div>
+    `;
+  }).join("");
+
+  // Column selects
+  const columnOptions = Object.keys(state.columns).map(n=>
+    `<option ${n===state.activeColumn?'selected':''}>${n}</option>`
+  ).join("");
+  columnSelectContestant.innerHTML = columnOptions;
+  columnSelectBet.innerHTML = columnOptions;
+
+  // Contestant select
+  contestantSelect.innerHTML = Object.keys(col.contestants)
+    .map(n=>`<option>${n}</option>`)
+    .join("");
+
+  // Contestant table
   contestantTable.innerHTML="";
-  const payout = state.totalPot*(1-BET_HOUSE);
+  const payout = col.totalPot*(1-BET_HOUSE);
   let buyTotal=0;
 
-  /* ✅ ADDITION: sort contestants by total bet (descending) */
-  const sortedContestants = Object.entries(state.contestants)
+  const sortedContestants = Object.entries(col.contestants)
     .sort((a,b) => (b[1].total || 0) - (a[1].total || 0));
 
   for(const [n,c] of sortedContestants){
     buyTotal+=c.buyIn;
     const mult=c.total?payout/c.total:0;
-    const rowId="details_"+n.replace(/\W/g,"");
+    const rowId="details_"+n.replace(/\W/g,"_");
 
     const betsHtml = c.bets.length
       ? c.bets.map((b,i)=>{
-          const payout = b.amount * mult;
+          const betPayout = b.amount * mult;
           return `
           <div>
             👤 ${b.name} — ${fmt(b.amount)}
-            <span style="color: #22c55e; font-weight: 600;">→ ${fmtPayout(payout)}</span>
-            <button class="remove-bet" onclick="removeBet('${n}',${i})">🗑</button>
+            <span style="color: #22c55e; font-weight: 600;">→ ${fmtPayout(betPayout)}</span>
+            <button class="remove-bet" onclick="removeBet('${state.activeColumn}','${n}',${i})">🗑</button>
           </div>
         `;
         }).join("")
@@ -360,9 +547,9 @@ function render(){
         <td>${mult?mult.toFixed(2)+'x':'—'}</td>
         <td class="buyin-col">${fmt(c.buyIn)}</td>
         <td class="place-col">
-          <button class="place-btn ${state.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
-          <button class="place-btn ${state.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
-          <button class="place-btn ${state.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
+          <button class="place-btn ${col.placements.first===n?'active':''}" onclick="setPlacement('first','${n}')">🥇</button>
+          <button class="place-btn ${col.placements.second===n?'active':''}" onclick="setPlacement('second','${n}')">🥈</button>
+          <button class="place-btn ${col.placements.third===n?'active':''}" onclick="setPlacement('third','${n}')">🥉</button>
         </td>
       </tr>
       <tr id="${rowId}" class="details-row">
@@ -371,27 +558,32 @@ function render(){
     `;
   }
 
-  totalPot.textContent=fmt(state.totalPot);
-  houseCut.textContent=fmt(state.totalPot*BET_HOUSE);
+  // Summary
+  totalPot.textContent=fmt(col.totalPot);
+  houseCut.textContent=fmt(col.totalPot*BET_HOUSE);
   payoutPool.textContent=fmt(payout);
 
+  // Buy-in prizes
   const prize=buyTotal*(1-BUYIN_HOUSE);
   buyInTotal.textContent=fmt(buyTotal);
   buyInPrize.textContent=fmt(prize);
 
-  firstName.textContent=state.placements.first||"—";
-  secondName.textContent=state.placements.second||"—";
-  thirdName.textContent=state.placements.third||"—";
+  firstName.textContent=col.placements.first||"—";
+  secondName.textContent=col.placements.second||"—";
+  thirdName.textContent=col.placements.third||"—";
   firstPrize.textContent=fmt(prize*0.5);
   secondPrize.textContent=fmt(prize*0.3);
   thirdPrize.textContent=fmt(prize*0.2);
 
-  if (isPopout) overviewTitle.textContent = `Overview — Pot: ${fmt(state.totalPot)}`;
+  if (isPopout) {
+    overviewTitle.textContent = `${state.activeColumn} — Pot: ${fmt(col.totalPot)}`;
+  }
 
   scalePopoutToFit();
 }
 
 /* ================= ENTER KEY SHORTCUTS ================= */
+newColumnName.addEventListener("keydown", e => e.key==="Enter" && addColumn());
 contestantName.addEventListener("keydown", e => e.key==="Enter" && addContestant());
 contestantBuyIn.addEventListener("keydown", e => e.key==="Enter" && addContestant());
 bettorName.addEventListener("keydown", e => e.key==="Enter" && placeBet());
